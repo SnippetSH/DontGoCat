@@ -10,4 +10,4 @@ build-release/
 ccat.log
 .claude/
 .serena
-README.md
+README-*.md
