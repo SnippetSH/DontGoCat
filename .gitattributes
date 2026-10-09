@@ -1,0 +1,12 @@
+# Normalize text files to LF in the repository
+* text=auto
+
+# Windows batch scripts must keep CRLF (labels/goto break with LF)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+# Inno Setup script
+*.iss text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary

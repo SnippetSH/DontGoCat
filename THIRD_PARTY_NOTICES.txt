@@ -1,0 +1,47 @@
+DontGoCat - Third-Party Notices
+===============================
+
+DontGoCat itself is licensed under the MIT License (see LICENSE.txt).
+The binary releases (installer and portable zip) also contain the
+following third-party components, which keep their own licenses.
+
+
+1. Qt 6.11.2 (Qt Core, Qt GUI, Qt Widgets, qwindows platform plugin,
+   qmodernwindowsstyle style plugin)
+-------------------------------------------------------------------
+
+Copyright (C) The Qt Company Ltd. and other contributors.
+https://www.qt.io
+
+Qt is used under the GNU Lesser General Public License version 3
+(LGPLv3). The full license text (LGPLv3, which supplements GPLv3) is in
+licenses/Qt-LGPL-3.0-GPL-3.0.txt.
+
+- DontGoCat links to Qt dynamically. The Qt libraries are the separate
+  Qt6*.dll files and the plugin DLLs under platforms/ and styles/.
+  You may replace them with your own compatible build of Qt 6.11.x.
+- The Qt libraries are unmodified. The complete corresponding source
+  code of Qt 6.11.2 is available from The Qt Company's download server:
+    https://download.qt.io/official_releases/qt/6.11/6.11.2/
+    https://download.qt.io/archive/qt/6.11/6.11.2/   (after the release
+                                                      is archived)
+- Qt contains further third-party components under their own (mostly
+  permissive) licenses. They are listed in the Qt documentation:
+    https://doc.qt.io/qt-6/licenses-used-in-qt.html
+
+
+2. Microsoft Visual C++ Runtime
+-------------------------------
+
+msvcp140.dll, msvcp140_1.dll, msvcp140_2.dll, vcruntime140.dll,
+vcruntime140_1.dll
+Copyright (C) Microsoft Corporation.
+Redistributed as permitted by the Microsoft Visual Studio license terms
+(Distributable Code). These files are not covered by the MIT License.
+
+
+3. Inno Setup (installer only)
+------------------------------
+
+The installer is built with Inno Setup.
+Copyright (C) Jordan Russell and Martijn Laan. https://jrsoftware.org

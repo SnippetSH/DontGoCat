@@ -1,0 +1,35 @@
+// DontGoCat.exe version resource + app icon (generated into the build dir by CMake configure_file).
+// Single source of truth for the version: project(DontGoCat VERSION ...) in CMakeLists.txt.
+#include <winver.h>
+
+// lowest ID is used by Explorer / taskbar as the app icon
+IDI_ICON1 ICON "@CCAT_ICON_PATH@"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION     @CCAT_VERSION_COMMA@
+ PRODUCTVERSION  @CCAT_VERSION_COMMA@
+ FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+ FILEFLAGS       0x0L
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_APP
+ FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"   // en-US, Unicode
+        BEGIN
+            VALUE "CompanyName",      "DontGoCat"
+            VALUE "FileDescription",  "DontGoCat - desktop pixel cat"
+            VALUE "FileVersion",      "@CCAT_VERSION_DOT@"
+            VALUE "InternalName",     "DontGoCat"
+            VALUE "LegalCopyright",   "Copyright (C) DontGoCat"
+            VALUE "OriginalFilename", "DontGoCat.exe"
+            VALUE "ProductName",      "DontGoCat"
+            VALUE "ProductVersion",   "@CCAT_VERSION_DOT@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04b0
+    END
+END

@@ -1,0 +1,3 @@
+    Inno Setup 6(ISCC.exe)를 찾지 못해 인스톨러는 만들지 않았습니다. (포터블 zip 은 생성됨)
+    설치:  winget install --id JRSoftware.InnoSetup -e   (또는 https://jrsoftware.org)
+    설치 후 scripts\package.cmd 를 다시 실행하면 인스톨러(dist\DontGoCat-Setup-<버전>.exe)가 만들어집니다.

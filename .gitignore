@@ -1,0 +1,12 @@
+build/
+build-*/
+.venv/
+.claude/settings.local.json
+.vscode/
+.cache/
+.claude/skills/archify/
+dist/
+build-release/
+ccat.log
+.claude/
+.serena

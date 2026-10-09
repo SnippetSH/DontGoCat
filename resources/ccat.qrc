@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- 트레이 아이콘 (py_codes/make_tray_icon.py 로 생성) -->
+    <qresource prefix="/icons">
+        <file alias="tray_face_16.png">../assets/tray_face_16.png</file>
+        <file alias="tray_face_24.png">../assets/tray_face_24.png</file>
+        <file alias="tray_face_32.png">../assets/tray_face_32.png</file>
+        <file alias="tray_face_48.png">../assets/tray_face_48.png</file>
+        <file alias="tray_face_64.png">../assets/tray_face_64.png</file>
+    </qresource>
+</RCC>
