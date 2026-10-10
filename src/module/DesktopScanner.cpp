@@ -474,3 +474,14 @@ const DesktopSnapshot &DesktopScanner::scanNow()
     emit scanned(m_snapshot);
     return m_snapshot;
 }
+
+std::optional<QRect> DesktopScanner::liveWindowRect(WindowHandle handle)
+{
+    const HWND hwnd = reinterpret_cast<HWND>(handle);
+    if (!IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+        return std::nullopt;
+    RECT rc{};
+    if (!frameBounds(hwnd, rc))
+        return std::nullopt;
+    return toQRect(rc);
+}

@@ -36,6 +36,7 @@ public:
 
 private:
     void tick();
+    void followWindow();   // Config::kFollowMs 주기: 붙어 있는 창의 실시간 위치를 몸에 반영
     void onSnapshot(const DesktopSnapshot &snapshot);
     void render();
     QPoint spawnPoint(const DesktopSnapshot &snapshot) const;
@@ -50,6 +51,7 @@ private:
     CatBrain m_brain;
 
     QTimer m_tickTimer;
+    QTimer m_followTimer;
     QElapsedTimer m_clock;
     qint64 m_lastTickMs = 0;
     int m_scale = Config::kDefaultScale;

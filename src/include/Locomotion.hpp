@@ -64,6 +64,10 @@ public:
     // 새 스냅샷 반영: 창 이동 추종, 발판 소실 / 세그먼트 이탈 시 낙하 시작
     void onSnapshot(const DesktopSnapshot &snapshot);
 
+    // 스캔 사이에 붙어 있는 창의 실시간 사각형 반영: 크기가 같으면 그 창의 세그먼트를 평행 이동한다.
+    // 스캔 주기(Config::kScanIntervalMs)보다 촘촘하게 창 이동을 따라가기 위함. 크기 변경/가림은 다음 스캔이 처리
+    void followOwner(const QRect &liveOwnerRect);
+
     void tick(qint64 dtMs);
 
     // ── 명령 ───────────────────────────────────────

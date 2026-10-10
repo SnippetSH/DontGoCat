@@ -35,6 +35,10 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     m_tickTimer.setInterval(Config::kTickMs);
     connect(&m_tickTimer, &QTimer::timeout, this, &CatApp::tick);
 
+    m_followTimer.setTimerType(Qt::PreciseTimer);
+    m_followTimer.setInterval(Config::kFollowMs);
+    connect(&m_followTimer, &QTimer::timeout, this, &CatApp::followWindow);
+
     // 스캔 → 몸 / 두뇌 / 트레이 / 최상위 유지
     connect(&m_scanner, &DesktopScanner::scanned, this, &CatApp::onSnapshot);
 
@@ -151,6 +155,7 @@ void CatApp::start()
 
     m_mouse.start();
     m_tickTimer.start();
+    m_followTimer.start();
 }
 
 void CatApp::onSnapshot(const DesktopSnapshot &snapshot)
@@ -174,6 +179,18 @@ void CatApp::tick()
     m_brain.tick(now);                // 이동이 끝난 직후 같은 tick 에 다음 step 을 이어 주므로 frame() 전에 호출
     if (m_visible)
         render();
+}
+
+void CatApp::followWindow()
+{
+    const std::optional<SurfacePoint> at = m_body.attachment();
+    if (!at || at->surface.owner == 0)
+        return;
+    if (const std::optional<QRect> live = DesktopScanner::liveWindowRect(at->surface.owner)) {
+        m_body.followOwner(*live);
+        if (m_visible)
+            render();
+    }
 }
 
 void CatApp::render()

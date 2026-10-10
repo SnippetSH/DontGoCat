@@ -17,6 +17,7 @@ inline constexpr const char *kSettingsScaleKey = "scale";
 // ── 타이머 ──────────────────────────────────────────
 inline constexpr int kTickMs = 16;            // 메인 tick (Locomotion, CatBrain)
 inline constexpr int kScanIntervalMs = 250;   // DesktopScanner
+inline constexpr int kFollowMs = 4;           // 붙어 있는 창 위치 추종 (≈250Hz, 144~240Hz 모니터 대응)
 inline constexpr int kMousePollMs = 33;       // MouseWatcher (≈30Hz)
 
 // ── 데스크탑 스캔 ───────────────────────────────────

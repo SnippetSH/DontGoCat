@@ -25,6 +25,9 @@ public:
     const DesktopSnapshot &snapshot() const { return m_snapshot; }
     const DesktopSnapshot &scanNow();
 
+    // 창 하나의 현재 DWM 확장 프레임 사각형 (전체 스캔 없이). 창이 없거나 숨김/최소화면 nullopt
+    static std::optional<QRect> liveWindowRect(WindowHandle hwnd);
+
 signals:
     void scanned(const DesktopSnapshot &snapshot);
 

@@ -183,6 +183,33 @@ void Locomotion::onSnapshot(const DesktopSnapshot &snapshot)
     beginFall(QPointF(m_lastAnchor), QPointF());
 }
 
+void Locomotion::followOwner(const QRect &liveOwnerRect)
+{
+    if (!m_hasPosition || m_mode != Mode::Attached || m_point.surface.owner == 0)
+        return;
+    const std::optional<QRect> known = m_snapshot.ownerRect(m_point.surface);
+    if (!known || known->size() != liveOwnerRect.size())
+        return;
+    const QPoint d = liveOwnerRect.topLeft() - known->topLeft();
+    if (d.isNull())
+        return;
+
+    const WindowHandle owner = m_point.surface.owner;
+    for (SurfaceSegment &seg : m_snapshot.segments) {
+        if (seg.id.owner != owner)
+            continue;
+        const bool floor = seg.id.kind == SurfaceKind::Floor;
+        const int dLine = floor ? d.y() : d.x();
+        const int dAlong = floor ? d.x() : d.y();
+        seg.line += dLine;
+        seg.a += dAlong;
+        seg.b += dAlong;
+        seg.ownerRect.translate(d);
+    }
+    if (const std::optional<QPoint> p = m_snapshot.resolve(m_point))
+        m_lastAnchor = *p;
+}
+
 // ── 애니메이션 시계 ──────────────────────────────────────
 
 void Locomotion::startAnim(CatAnim anim, int frame, double frameScale, bool reverse)
