@@ -14,10 +14,10 @@ class Locomotion;
 class MouseWatcher;
 
 // 행동 상태 머신 (README 5.9). 위쪽 상태가 아래쪽을 선점한다.
-//   Hidden > Falling > QuitBlock > TrayApproach > MousePlay > Autonomous
+//   Hidden > Grabbed > Falling > QuitBlock > TrayApproach > MousePlay > Autonomous
 //
-// Hidden / Falling 은 "덮어씌우는" 상태라 원래 의도(QuitBlock 등)를 지운 채 끼어들지 않고,
-// 끝나면 의도에 맞게 다시 시작한다 (Hidden → Autonomous, Falling → 같은 의도로 재계획).
+// Hidden / Grabbed / Falling 은 "덮어씌우는" 상태라 원래 의도(QuitBlock 등)를 지운 채 끼어들지 않고,
+// 끝나면 의도에 맞게 다시 시작한다 (Hidden → Autonomous, Grabbed → 놓이면 Falling, Falling → 같은 의도로 재계획).
 // 경로 실행: 현재 Route 를 들고 있다가 몸이 한가해질 때마다 다음 step 을 실행한다 (applyRouteStep).
 // 같은 tick 안에서 다음 step 을 이어 줘서 이동이 끝난 직후 idle 이 한 tick 깜빡이지 않는다.
 class QRandomGenerator;
@@ -27,7 +27,7 @@ class CatBrain : public QObject
     Q_OBJECT
 
 public:
-    enum class State { Hidden, Falling, QuitBlock, TrayApproach, MousePlay, Autonomous };
+    enum class State { Hidden, Grabbed, Falling, QuitBlock, TrayApproach, MousePlay, Autonomous };
 
     CatBrain(Locomotion &body, PathPlanner &planner, MouseWatcher &mouse, QObject *parent = nullptr);
 
@@ -43,6 +43,11 @@ public:
 
     // 현재 유효한 상태 (Hidden / Falling 이 의도보다 우선)
     State state() const;
+
+    // 잡기 (README 5.9, 5.13). grab 은 Hidden 이거나 의도가 QuitBlock 이면 거절(false)
+    bool grab(QPoint gripDesktop);
+    void moveGrab(QPoint gripDesktop);
+    void releaseGrab();
 
 public slots:
     void onTrayApproach(bool near, QPoint trayFloorPoint);
@@ -105,6 +110,7 @@ private:
 
     // ── 덮어씌우는 상태 ────────────────────────────
     bool updateHidden();
+    bool updateGrabbed();
     bool updateFalling();
 
     // ── 상태별 ─────────────────────────────────────

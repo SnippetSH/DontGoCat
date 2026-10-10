@@ -9,7 +9,7 @@
 // 고양이를 그리는 투명 최상위 창 (README 3.4, 5.4).
 // - 한 변 32 × scale 정사각형 고정 크기 (모든 회전을 담음)
 // - 기본은 클릭 통과 (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
-// - 종료 버튼을 덮는 동안만 setClickThrough(false) → 불투명 픽셀만 클릭을 받는다
+// - 종료 버튼을 덮는 동안 / Shift 잡기 대기 / 잡혀 있는 동안만 setClickThrough(false) → 불투명 픽셀만 클릭을 받는다 (README 3.4)
 class CatOverlay : public QWidget
 {
     Q_OBJECT
@@ -27,6 +27,9 @@ public:
     void setClickThrough(bool on);
     bool isClickThrough() const { return m_clickThrough; }
 
+    // 현재 표시 중인 프레임에서 desktop 점이 알파 > 0 픽셀인지 (숨김 / 프레임 없음이면 false)
+    bool hitsOpaque(QPoint desktop) const;
+
     // 작업표시줄 클릭 등으로 밀려난 최상위 상태 재확인 (스캔 주기마다 호출)
     void ensureTopmost();
 
@@ -34,10 +37,12 @@ public:
 
 signals:
     void clicked(Qt::KeyboardModifiers modifiers);
+    void released();   // 왼쪽 버튼을 뗐다 (누른 창이 마우스를 캡처하므로 커서가 창 밖이어도 온다)
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
     void showEvent(QShowEvent *event) override;
 
 private:

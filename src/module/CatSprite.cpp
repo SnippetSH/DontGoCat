@@ -410,6 +410,24 @@ QRgb colorFor(char key, const CatPalette &p)
     }
 }
 
+// hang 프레임 비트맵 (사용자 원화, py_codes/make_hang_frames.py 가 생성). 파츠 조합/자동 외곽선 없이 그대로 쓴다
+#include "CatHangFrames.inc"
+
+static_assert(sizeof(kHangFrames[0]) / sizeof(kHangFrames[0][0]) == CatSprite::Width,
+              "hang frames are Width x Width");
+
+QImage renderHang(int frame, CatFacing facing, const CatPalette &palette)
+{
+    const char *const *rows = kHangFrames[((frame % kHangFrameCount) + kHangFrameCount) % kHangFrameCount];
+    QImage img(CatSprite::Width, CatSprite::Width, QImage::Format_ARGB32);
+    for (int y = 0; y < CatSprite::Width; ++y)
+        for (int x = 0; x < CatSprite::Width; ++x)
+            img.setPixel(x, y, colorFor(rows[y][x], palette));
+    if (facing == CatFacing::Right)
+        img = img.flipped(Qt::Horizontal);
+    return img;
+}
+
 } // namespace
 
 int CatSprite::snap(qreal v)
@@ -433,6 +451,9 @@ CatPose CatPose::lerp(const CatPose &a, const CatPose &b, float u)
 
 QImage CatSprite::render(const CatPose &pose, CatFacing facing, const CatPalette &palette)
 {
+    if (pose.bodyShape == CatBody::Hang)   // 매달림은 파츠 조합이 아니라 32x32 원화 프레임 (README 5.1)
+        return renderHang(pose.hangFrame, facing, palette);
+
     const int bx = snap(pose.body.x()), by = snap(pose.body.y());
     const int hx = snap(pose.head.x()), hy = snap(pose.head.y());
 
@@ -532,7 +553,8 @@ QImage CatSprite::renderOriented(const CatPose &pose, CatGravity gravity, CatFac
                                  const CatPalette &palette)
 {
     const QImage base = render(pose, facing, palette);   // 좌우 반전은 render()에서 먼저 적용됨
-    if (gravity == CatGravity::Down)
+    // Hang 은 항상 Down 으로만 쓰는 32x32 프레임이라 회전하지 않는다 (Height×Width 로 돌릴 수 없음)
+    if (gravity == CatGravity::Down || pose.bodyShape == CatBody::Hang)
         return base;
 
     // 90° 회전은 픽셀을 그대로 옮기므로 무손실. (x, y) → 시계 방향 (Height-1-y, x), 반시계 방향 (y, Width-1-x)
@@ -560,6 +582,15 @@ QPoint CatSprite::anchorIn(CatGravity gravity)
     case CatGravity::Right: return QPoint(kGroundLine, Width / 2);
     default:                return QPoint(Width / 2, kGroundLine);
     }
+}
+
+QPoint CatSprite::hangGripIn(CatFacing facing)
+{
+    // 위로 뻗은 앞발 끝 맨 윗줄(y=0, 3칸 x=15..17)의 가운데 칸 x=16 의 왼쪽 위 모서리 (픽셀 경계 좌표).
+    // anchorIn 이 픽셀 경계 좌표(Width/2, Height-1)를 쓰는 것과 같은 규칙이라 커서 끝이 앞발 맨 윗줄 윗변에 닿는다.
+    // 정수 좌표라 가운데 칸의 중앙(16.5)에서 반 칸 왼쪽이며, Right 는 캔버스 좌우 반전 좌표 (Width - 16 = 16, 가운데 칸의 오른쪽 변)
+    constexpr int kGripX = 16, kGripY = 0;
+    return QPoint(facing == CatFacing::Right ? Width - kGripX : kGripX, kGripY);
 }
 
 QRect CatSprite::opaqueBounds(const QImage &sprite)

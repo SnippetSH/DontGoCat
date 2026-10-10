@@ -129,7 +129,7 @@ Locomotion::Locomotion() = default;
 
 void Locomotion::setScale(int scale)
 {
-    m_scale = scale;
+    m_scale = scale;   // Held 의 앵커는 anchor() 가 그립 + 오프셋 × 배율로 매번 계산하므로 그립 점은 그대로 유지된다
 }
 
 double Locomotion::gravity() const
@@ -160,6 +160,9 @@ void Locomotion::onSnapshot(const DesktopSnapshot &snapshot)
     m_snapshot = snapshot;
     if (!m_hasPosition)
         return;
+
+    if (m_mode == Mode::Held)
+        return;   // 잡혀 있는 동안은 발판과 무관 (놓으면 그 자리에서 낙하)
 
     if (m_mode == Mode::Airborne) {
         if (m_cmd == Cmd::Jump)
@@ -790,8 +793,36 @@ void Locomotion::faceToward(QPoint desktopPoint)
     }
 }
 
+void Locomotion::hold(QPoint gripDesktop)
+{
+    if (!m_hasPosition)
+        return;
+    m_mode = Mode::Held;
+    m_cmd = Cmd::None;
+    m_playThenIdle = false;
+    m_grip = gripDesktop;
+    startAnim(CatAnim::Hang);
+}
+
+void Locomotion::moveHeld(QPoint gripDesktop)
+{
+    if (m_mode == Mode::Held)
+        m_grip = gripDesktop;
+}
+
+void Locomotion::release()
+{
+    if (m_mode != Mode::Held)
+        return;
+    beginFall(QPointF(anchor()), QPointF());   // 던지기 없음: 초속도 0
+}
+
 void Locomotion::stop()
 {
+    if (m_mode == Mode::Held) {
+        release();
+        return;
+    }
     if (m_mode == Mode::Airborne) {
         if (m_cmd == Cmd::Jump) {   // 공중에서는 멈출 수 없으므로 점프를 낙하로 바꾼다
             m_cmd = Cmd::Fall;
@@ -819,7 +850,7 @@ void Locomotion::tick(qint64 dtMs)
 
 bool Locomotion::isBusy() const
 {
-    return m_mode == Mode::Airborne || m_cmd != Cmd::None;
+    return m_mode != Mode::Attached || m_cmd != Cmd::None;
 }
 
 std::optional<SurfacePoint> Locomotion::attachment() const
@@ -835,6 +866,8 @@ QPoint Locomotion::anchor() const
         return QPoint();
     if (m_mode == Mode::Airborne)
         return QPoint(int(std::lround(m_pos.x())), int(std::lround(m_pos.y())));
+    if (m_mode == Mode::Held)
+        return m_grip + (CatSprite::anchorIn(CatGravity::Down) - CatSprite::hangGripIn(m_facing)) * m_scale;
     if (const std::optional<QPoint> p = m_snapshot.resolve(m_point))
         return *p;
     return m_lastAnchor;

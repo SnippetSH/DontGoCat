@@ -23,6 +23,8 @@ public:
     QPoint pos() const { return m_pos; }
     qint64 idleMs() const;          // 마지막 "사용자" 이동 후 경과 ms
     bool anyButtonDown() const;     // 좌/우/가운데 버튼
+    bool leftButtonDown() const;    // 왼쪽 버튼 (잡기 해제 안전장치, README 5.13)
+    bool shiftDown() const;         // Shift (잡기 대기 판정). 둘 다 폴링과 무관하게 호출 시점 값
 
     // 커서를 (dx, dy) 만큼 실제로 옮긴다. 버튼이 눌려 있으면 아무것도 안 하고 false.
     bool nudge(int dx, int dy);

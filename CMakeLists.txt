@@ -21,6 +21,7 @@ set(CCAT_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 add_library(ccat_sprite STATIC
     src/include/CatSprite.hpp
     src/module/CatSprite.cpp
+    src/module/CatHangFrames.inc
     src/include/CatAnim.hpp
     src/module/CatAnim.cpp
 )

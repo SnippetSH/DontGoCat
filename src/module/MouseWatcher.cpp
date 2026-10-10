@@ -55,6 +55,16 @@ bool MouseWatcher::anyButtonDown() const
         || (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
 }
 
+bool MouseWatcher::leftButtonDown() const
+{
+    return (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+}
+
+bool MouseWatcher::shiftDown() const
+{
+    return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+}
+
 bool MouseWatcher::nudge(int dx, int dy)
 {
     if (m_nudgeHook)

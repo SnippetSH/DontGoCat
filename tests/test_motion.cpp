@@ -586,6 +586,74 @@ static void testDash()
 }
 
 // ── 8. 기타 명령 ─────────────────────────────────────────
+// ── 잡기 (Held, README 5.7 / 5.13) ───────────────────────
+static void testHeld()
+{
+    std::printf("[held]\n");
+    const DesktopSnapshot s = fullSnap();
+    const auto expectAnchor = [](QPoint grip, CatFacing f, int scale) {
+        return grip + (CatSprite::anchorIn(CatGravity::Down) - CatSprite::hangGripIn(f)) * scale;
+    };
+
+    for (const CatFacing facing : {CatFacing::Left, CatFacing::Right}) {
+        Locomotion l = makeOnFloor(s, 500);
+        l.face(facing);
+        const QPoint grip(700, 500);
+        l.hold(grip);
+        CHECK(l.mode() == Locomotion::Mode::Held, "mode Held");
+        CHECK(l.frame().anim == CatAnim::Hang, "anim Hang %d", int(l.frame().anim));
+        CHECK(l.frame().gravity == CatGravity::Down, "gravity Down");
+        CHECK(l.frame().facing == facing, "facing kept");
+        CHECK(l.anchor() == expectAnchor(grip, facing, 3), "anchor formula (%d,%d)", l.anchor().x(), l.anchor().y());
+        CHECK(l.isBusy(), "busy");
+        CHECK(!l.attachment().has_value(), "no attachment");
+
+        run(l, 100);   // 프레임만 진행, 물리 없음
+        CHECK(l.mode() == Locomotion::Mode::Held && l.frame().anim == CatAnim::Hang, "still hanging");
+        CHECK(l.anchor() == expectAnchor(grip, facing, 3), "anchor stable");
+
+        const QPoint grip2(1000, 300);   // A(~900) 와 B(1100~) 사이: 아래는 모니터 바닥
+        l.moveHeld(grip2);
+        CHECK(l.anchor() == expectAnchor(grip2, facing, 3), "moveHeld follows");
+
+        l.onSnapshot(baseSnap());   // 발판이 사라져도 무시
+        l.followOwner(QRect(0, 0, 10, 10));
+        CHECK(l.mode() == Locomotion::Mode::Held && l.anchor() == expectAnchor(grip2, facing, 3), "snapshot ignored");
+
+        l.setScale(2);   // 배율이 바뀌어도 그립 점은 그대로
+        CHECK(l.anchor() == expectAnchor(grip2, facing, 2), "setScale keeps grip");
+        l.setScale(3);
+
+        l.release();
+        CHECK(l.mode() == Locomotion::Mode::Airborne, "release -> Airborne");
+        CHECK(l.frame().anim == CatAnim::Fall, "fall anim");
+        CHECK(l.anchor() == expectAnchor(grip2, facing, 3), "falls from the held anchor");
+        l.moveHeld(QPoint(0, 0));   // Held 가 아니면 무시
+        CHECK(l.anchor() == expectAnchor(grip2, facing, 3), "moveHeld ignored when not held");
+        CHECK(runUntilIdle(l), "landed");
+        CHECK(l.mode() == Locomotion::Mode::Attached && l.anchor().y() == kFloorY, "on the floor (%d,%d)", l.anchor().x(), l.anchor().y());
+        CHECK(l.anchor().x() == expectAnchor(grip2, facing, 3).x(), "no toss, straight down");
+    }
+
+    // stop() 은 Held 를 놓는다
+    Locomotion st = makeOnFloor(s, 500);
+    st.hold(QPoint(700, 500));
+    st.stop();
+    CHECK(st.mode() == Locomotion::Mode::Airborne, "stop releases");
+    CHECK(runUntilIdle(st) && st.mode() == Locomotion::Mode::Attached, "lands after stop");
+
+    // 공중에서 잡기 (낙하 중 → Held → 놓기)
+    Locomotion air;
+    air.setScale(3);
+    air.spawn(s, QPoint(700, 200));
+    run(air, 5);
+    CHECK(air.mode() == Locomotion::Mode::Airborne, "falling");
+    air.hold(QPoint(700, 300));
+    CHECK(air.mode() == Locomotion::Mode::Held, "held from air");
+    air.release();
+    CHECK(runUntilIdle(air) && air.mode() == Locomotion::Mode::Attached, "lands after air grab");
+}
+
 static void testMisc()
 {
     std::printf("[play / face / stop]\n");
@@ -868,6 +936,7 @@ int main(int argc, char **argv)
     testWalkOff();
     testRunFrameScale();
     testDash();
+    testHeld();
     testMisc();
     testPlanner();
     testPerf();

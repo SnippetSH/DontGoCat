@@ -8,9 +8,10 @@
 //   Climb : 벽타기 (기본 프레임에서 그리고 renderOriented로 회전)
 //   Mantle: 벽 꼭대기 → 창 지붕으로 넘어가기 (1회성)
 //   Roll  : 뒹굴기 / Sprawl: 길게 엎드려 버튼 덮기 / Crouch: 덮치기 준비 실룩
+//   Hang  : 커서에 앞발로 매달려 대롱대롱 (잡기, README 5.13). 그립 점(CatSprite::hangGripIn) 고정, Down 으로만 그린다
 enum class CatAnim {
     Idle, Walk, Run, Sit, Sleep, JumpUp, Fall, Land, PawSwipe,
-    Climb, Mantle, Roll, Sprawl, Crouch,
+    Climb, Mantle, Roll, Sprawl, Crouch, Hang,
     Count
 };
 

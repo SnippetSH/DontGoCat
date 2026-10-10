@@ -3,6 +3,7 @@
 #include "Config.hpp"
 
 #include <QCoreApplication>
+#include <QCursor>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
@@ -83,7 +84,8 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
 
     // 두뇌 → 트레이 / 오버레이
     connect(&m_brain, &CatBrain::blockAbandoned, &m_tray, &TrayController::releaseBlock);
-    connect(&m_brain, &CatBrain::wantClickThrough, &m_overlay, &CatOverlay::setClickThrough);
+    // 클릭 통과는 두뇌 요청 + Shift 잡기 대기 + 잡힘을 매 tick 합성한다 (updateClickThrough, README 3.4)
+    connect(&m_brain, &CatBrain::wantClickThrough, this, [this](bool on) { m_brainClickThrough = on; });
     connect(&m_brain, &CatBrain::visibilityChanged, this, [this](bool visible) {
         m_visible = visible;
         if (visible) {
@@ -96,8 +98,48 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
         }
     });
 
-    // 오버레이 → 트레이 (버튼을 덮은 고양이 클릭)
-    connect(&m_overlay, &CatOverlay::clicked, &m_tray, &TrayController::onCatClicked);
+    // 오버레이 → Shift 잡기 / 트레이 (버튼을 덮은 고양이 클릭)
+    connect(&m_overlay, &CatOverlay::clicked, this, &CatApp::onCatPressed);
+    connect(&m_overlay, &CatOverlay::released, this, [this] {
+        if (!m_grabbing)
+            return;
+        m_brain.releaseGrab();
+        m_grabbing = false;
+    });
+}
+
+void CatApp::onCatPressed(Qt::KeyboardModifiers modifiers)
+{
+    // 방해 중 Shift+클릭은 즉시 종료(TrayController), 아닐 때의 Shift+클릭이 잡기 (README 5.6, 5.13)
+    if ((modifiers & Qt::ShiftModifier) && !m_tray.isBlocking()) {
+        if (m_brain.grab(QCursor::pos()))
+            m_grabbing = true;
+        return;
+    }
+    m_tray.onCatClicked(modifiers);
+}
+
+void CatApp::updateGrab()
+{
+    if (!m_grabbing)
+        return;
+    if (m_body.mode() != Locomotion::Mode::Held)
+        m_grabbing = false;   // Hidden 등으로 풀렸다
+    else if (!m_mouse.leftButtonDown()) {
+        m_brain.releaseGrab();   // released 시그널을 놓친 경우의 안전장치
+        m_grabbing = false;
+    } else {
+        m_brain.moveGrab(QCursor::pos());
+    }
+}
+
+void CatApp::updateClickThrough()
+{
+    const bool shiftHover = m_mouse.shiftDown() && !m_mouse.anyButtonDown() && m_visible
+        && m_overlay.hitsOpaque(QCursor::pos());
+    const bool through = m_brainClickThrough && !shiftHover && !m_grabbing;
+    if (through != m_overlay.isClickThrough())
+        m_overlay.setClickThrough(through);
 }
 
 void CatApp::setScale(int scale)
@@ -196,9 +238,11 @@ void CatApp::tick()
     m_lastTickMs = now;
 
     m_tray.onCursor(m_mouse.pos());   // 떠나는 지연 판정은 주기적인 호출이 필요
+    updateGrab();                     // 잡힌 동안 그립 = 커서 (몸이 움직이기 전에 반영)
     m_body.tick(dt);
     m_brain.setPopupRect(m_tray.popupRect());
     m_brain.tick(now);                // 이동이 끝난 직후 같은 tick 에 다음 step 을 이어 주므로 frame() 전에 호출
+    updateClickThrough();
     if (m_visible)
         render();
 }

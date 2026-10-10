@@ -45,6 +45,7 @@ struct CornerLink
 // 고양이 몸의 운동 상태 (README 5.7).
 // - Attached: 면 위 (SurfacePoint). 위치는 항상 "소유 사각형 + offset" 으로 계산 → 창 이동 추종
 // - Airborne: 점프/낙하 중 (연속 좌표, 중력)
+// - Held    : 커서에 잡혀 매달림 (README 5.13). 그립 점 기준 위치, Hang loop, 스냅샷 무시. release()/stop() → 그 자리 낙하
 // - 걷기/오르기는 애니메이션 프레임이 넘어갈 때만 speedPxPerFrame × scale 만큼 이동 (디딤발 고정)
 // 명령은 한 번에 하나. 스스로 끝나는 명령이 진행 중이면 isBusy() == true (Airborne 은 항상 busy).
 // 반복(loop) 애니메이션의 play() 는 stop() 까지 계속되지만 busy 가 아니다 (idle 과 같음).
@@ -52,7 +53,7 @@ struct CornerLink
 class Locomotion
 {
 public:
-    enum class Mode { Attached, Airborne };
+    enum class Mode { Attached, Airborne, Held };
 
     Locomotion();
 
@@ -83,7 +84,13 @@ public:
     void play(CatAnim anim);                           // 제자리 애니메이션 (loop 면 stop() 까지, one-shot 은 끝 프레임 유지)
     void face(CatFacing facing);
     void faceToward(QPoint desktopPoint);              // 바닥: x 비교, 벽: y 비교
-    void stop();                                       // 현재 명령 취소 → idle
+    void stop();                                       // 현재 명령 취소 → idle (Held 면 release)
+
+    // ── 잡기 (README 5.7, 5.13) ────────────────────
+    // anchor = grip + (CatSprite::anchorIn(Down) − CatSprite::hangGripIn(facing)) × scale
+    void hold(QPoint gripDesktop);                     // 어떤 상태든 명령을 버리고 Held + Hang loop. facing 유지
+    void moveHeld(QPoint gripDesktop);                 // Held 가 아니면 무시
+    void release();                                    // Held → 초속도 0 beginFall. Held 가 아니면 무시
 
     // ── 상태 ───────────────────────────────────────
     Mode mode() const { return m_mode; }
@@ -149,6 +156,9 @@ private:
     CatFacing m_facing = CatFacing::Left;
     QPoint m_lastAnchor;
     bool m_hasPosition = false;
+
+    // 잡힘
+    QPoint m_grip;
 
     // 공중
     QPointF m_pos;

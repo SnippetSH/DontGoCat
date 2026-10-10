@@ -31,14 +31,15 @@ int exportSheets(const QString &dir)
         const CatAnimInfo &info = animInfo(anim);
         const int n = info.frameCount();
 
-        QImage sheet(CatSprite::Width * scale * n, CatSprite::Height * scale, QImage::Format_ARGB32);
+        const int rows = anim == CatAnim::Hang ? CatSprite::Width : CatSprite::Height;   // hang 프레임만 32x32 (README 5.1)
+        QImage sheet(CatSprite::Width * scale * n, rows * scale, QImage::Format_ARGB32);
         sheet.fill(QColor(0xCA, 0xD3, 0xDA));
         QPainter p(&sheet);
         int jitter = 0;
         for (int f = 0; f < n; ++f) {
             const QImage key = CatSprite::render(keyPose(anim, f));
             p.drawImage(QRect(f * CatSprite::Width * scale, 0,
-                              CatSprite::Width * scale, CatSprite::Height * scale), key);
+                              CatSprite::Width * scale, rows * scale), key);
             // poseFor를 프레임 시작 시점에서 샘플링하면 키포즈와 픽셀 단위로 같아야 한다
             if (CatSprite::render(poseFor(anim, frameStartT(anim, f))) != key)
                 ++jitter;
@@ -66,6 +67,8 @@ int exportOriented(const QString &dir)
     for (CatFacing facing : {CatFacing::Left, CatFacing::Right})
         for (int a = 0; a < int(CatAnim::Count); ++a)
             for (int f = 0; f < animInfo(CatAnim(a)).frameCount(); ++f) {
+                if (CatAnim(a) == CatAnim::Hang)   // 항상 Down 으로만 그리는 32x32 프레임: 90° 회전 대상 아님 (renderOriented 는 그대로 돌려줌)
+                    continue;
                 const CatPose pose = keyPose(CatAnim(a), f);
                 const QImage base = CatSprite::render(pose, facing);
                 QTransform cw, ccw;
@@ -82,6 +85,23 @@ int exportOriented(const QString &dir)
         && CatSprite::anchorIn(CatGravity::Left) == QPoint(CatSprite::Height - ground, CatSprite::Width / 2)
         && CatSprite::anchorIn(CatGravity::Right) == QPoint(ground, CatSprite::Width / 2);
     failures += anchorOk ? 0 : 1;
+
+    // hang: 32x32, 그립 점은 앞발 맨 윗줄 가운데 칸의 왼쪽 위 모서리 (Right 는 좌우 반전) — 그 칸이 불투명하고 그 위 줄은 비어 있어야 하며,
+    // 모든 프레임에서 앞발 윗부분(0~2 줄)이 같아야 한다 (그립 고정)
+    bool hangOk = true;
+    for (CatFacing facing : {CatFacing::Left, CatFacing::Right}) {
+        const QPoint g = CatSprite::hangGripIn(facing);
+        const int cellX = facing == CatFacing::Left ? g.x() : g.x() - 1;   // 그립 점이 닿은 칸 (Right 는 오른쪽 변이라 왼쪽 칸)
+        const QImage first = CatSprite::render(keyPose(CatAnim::Hang, 0), facing);
+        hangOk = hangOk && first.size() == QSize(CatSprite::Width, CatSprite::Width)
+            && g.y() == 0 && qAlpha(first.pixel(cellX, g.y())) > 0;
+        for (int f = 1; f < animInfo(CatAnim::Hang).frameCount(); ++f) {
+            const QImage img = CatSprite::render(keyPose(CatAnim::Hang, f), facing);
+            hangOk = hangOk && img.size() == first.size() && img.copy(0, 0, img.width(), 3) == first.copy(0, 0, img.width(), 3);
+        }
+    }
+    failures += hangOk ? 0 : 1;
+    std::printf("hang       32x32 / grip fixed check %s\n", hangOk ? "ok" : "FAILED");
 
     // 시트: 위 줄 Left(벽타기 8프레임, 넘어가기 3프레임), 아래 줄 Right
     constexpr int scale = 6, cell = CatSprite::Width * scale;

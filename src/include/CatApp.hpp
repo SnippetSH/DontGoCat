@@ -41,6 +41,9 @@ private:
     void followWindow();   // Config::kFollowMs 주기: 붙어 있는 창의 실시간 위치를 몸에 반영
     void onSnapshot(const DesktopSnapshot &snapshot);
     void render();
+    void onCatPressed(Qt::KeyboardModifiers modifiers);   // Shift 잡기 / 그 밖은 TrayController (README 5.13)
+    void updateGrab();                                    // tick: 잡힌 동안 커서 추적, 버튼 뗌 안전장치
+    void updateClickThrough();                            // tick: brainWants && !shiftHover && !grabbing (README 3.4)
     QPoint spawnPoint(const DesktopSnapshot &snapshot) const;
     QPoint trayFloorPoint() const;
 
@@ -59,6 +62,8 @@ private:
     qint64 m_lastTickMs = 0;
     int m_scale = Config::kDefaultScale;
     bool m_visible = true;
+    bool m_brainClickThrough = true;   // CatBrain::wantClickThrough 마지막 값
+    bool m_grabbing = false;
 
     // 렌더 캐시: (anim, frame, facing, gravity) 가 바뀔 때만 다시 그린다 (pose 는 anim/frame 의 키포즈라 함께 결정됨)
     QImage m_image;

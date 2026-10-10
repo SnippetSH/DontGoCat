@@ -85,6 +85,17 @@ void CatOverlay::setClickThrough(bool on)
     setExStyleBits(toHwnd(winId()), WS_EX_TRANSPARENT, on);
 }
 
+bool CatOverlay::hitsOpaque(QPoint desktop) const
+{
+    if (!isVisible() || !m_hasFrame || m_sprite.isNull())
+        return false;
+    const QPoint local = desktop - m_topLeft;   // 창 로컬 (물리 px)
+    if (local.x() < 0 || local.y() < 0
+        || local.x() >= m_sprite.width() * m_scale || local.y() >= m_sprite.height() * m_scale)
+        return false;
+    return qAlpha(m_sprite.pixel(local.x() / m_scale, local.y() / m_scale)) > 0;   // 정수 나눗셈 (QPoint / int 는 반올림)
+}
+
 void CatOverlay::ensureTopmost()
 {
     if (!isVisible())
@@ -121,6 +132,13 @@ void CatOverlay::mousePressEvent(QMouseEvent *event)
     if (GetKeyState(VK_SHIFT) & 0x8000)
         mods |= Qt::ShiftModifier;
     emit clicked(mods);
+}
+
+void CatOverlay::mouseReleaseEvent(QMouseEvent *event)
+{
+    // 누른 창이 마우스를 캡처하므로 커서가 창 밖에서 떼어져도 온다 (잡기 해제, README 5.13)
+    if (event->button() == Qt::LeftButton)
+        emit released();
 }
 
 void CatOverlay::showEvent(QShowEvent *event)

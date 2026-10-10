@@ -10,7 +10,7 @@ namespace {
 
 constexpr int kAnimCount = int(CatAnim::Count);
 constexpr int kFrames[kAnimCount] = {6, 8, 6, 4, 4, 3, 2, 2, 5,
-                                    8, 3, 4, 8, 4};   // climb, mantle, roll, sprawl, crouch
+                                    8, 3, 4, 8, 4, 4};   // climb, mantle, roll, sprawl, crouch, hang
 
 int wrap(int i, int n) { return ((i % n) + n) % n; }
 
@@ -281,15 +281,24 @@ CatPose crouch(int f)
     return p;
 }
 
+// 매달림: 사용자 원화에서 만든 32x32 프레임 (CatSprite::render 가 hangFrame 번호로 그린다). 그립 점 고정, 어깨 아래만 좌우로 흔들림
+CatPose hang(int f)
+{
+    CatPose p;
+    p.bodyShape = CatBody::Hang;
+    p.hangFrame = f;
+    return p;
+}
+
 CatPose (*const kPoseFns[kAnimCount])(int) = {
     idle, walk, run, sit, sleep, jumpUp, fall, land, pawSwipe,
-    climb, mantle, roll, sprawl, crouch,
+    climb, mantle, roll, sprawl, crouch, hang,
 };
 
 // 디딤발(연속 두 프레임 모두 지면 y=0)의 x 변화로 이동 속도 계산
 int computeSpeed(CatAnim anim, const CatAnimInfo &info)
 {
-    if (!info.loop || anim == CatAnim::Roll)   // 뒹굴 때 다리는 지면이 아니라 허공에 있다
+    if (!info.loop || anim == CatAnim::Roll || anim == CatAnim::Hang)   // 뒹굴거나 매달렸을 때 다리는 지면이 아니라 허공에 있다
         return 0;
     std::map<int, int> votes;
     const int n = info.frameCount();
@@ -325,6 +334,7 @@ std::array<CatAnimInfo, kAnimCount> buildInfos()
         {"roll",      {150, 150, 150, 150},                     true},
         {"sprawl",    {250, 250, 250, 250, 250, 250, 250, 250}, true},
         {"crouch",    {110, 110, 110, 110},                     true},
+        {"hang",      {180, 180, 180, 180},                     true},
     }};
     for (int i = 0; i < kAnimCount; ++i) {
         CatAnimInfo &info = infos[i];
@@ -384,7 +394,7 @@ CatPose poseFor(CatAnim anim, float t)
 
 QRect animOpaqueBounds(CatAnim anim, bool intersection)
 {
-    constexpr int W = CatSprite::Width, H = CatSprite::Height;
+    constexpr int W = CatSprite::Width, H = CatSprite::Width;   // Hang 은 32x32 (나머지는 Height 줄까지만 그려지고 아래는 투명)
     const int n = animInfo(anim).frameCount();
 
     QRect united;
@@ -398,7 +408,7 @@ QRect animOpaqueBounds(CatAnim anim, bool intersection)
         united = united.united(CatSprite::opaqueBounds(img));
         for (int y = 0; y < H; ++y)
             for (int x = 0; x < W; ++x)
-                always[y][x] = always[y][x] && qAlpha(img.pixel(x, y)) > 0;
+                always[y][x] = always[y][x] && y < img.height() && qAlpha(img.pixel(x, y)) > 0;
     }
     if (!intersection)
         return united;

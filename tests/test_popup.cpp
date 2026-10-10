@@ -4,6 +4,8 @@
 // 클릭 규칙: 버튼 클릭 → 항상 종료 (시도 아님), 고양이 몸 클릭 → 방해 중이면 재시도, Shift+고양이 클릭 → 종료.
 #include "TestCheck.hpp"
 
+#include "CatOverlay.hpp"
+#include "CatSprite.hpp"
 #include "Config.hpp"
 #include "QuitPopup.hpp"
 #include "TrayController.hpp"
@@ -253,6 +255,43 @@ static void testVolumeSlider()
     CHECK(emitted.size() == 3, "unchanged release ignored (%zu)", emitted.size());
 }
 
+// CatOverlay::hitsOpaque (Shift 잡기 대기 판정, README 5.4)
+static void testHitsOpaque()
+{
+    std::printf("[5] overlay hitsOpaque\n");
+    CatOverlay o;
+    o.setScale(3);
+    CHECK(!o.hitsOpaque(QPoint(0, 0)), "no frame yet");
+
+    // 32x24 스프라이트: (4,4)~(7,7) 만 불투명
+    QImage img(CatSprite::Width, CatSprite::Height, QImage::Format_ARGB32);
+    img.fill(Qt::transparent);
+    for (int y = 4; y <= 7; ++y)
+        for (int x = 4; x <= 7; ++x)
+            img.setPixel(x, y, qRgba(255, 128, 0, 255));
+
+    const QPoint anchor(500, 500);
+    o.setFrame(img, anchor, CatGravity::Down);
+    const QPoint topLeft = anchor - CatSprite::anchorIn(CatGravity::Down) * 3;
+    CHECK(!o.hitsOpaque(topLeft + QPoint(14, 14)), "hidden window");   // 아직 show 전
+
+    o.show();
+    QCoreApplication::processEvents();
+    CHECK(o.isVisible(), "visible");
+    CHECK(o.hitsOpaque(topLeft + QPoint(4 * 3, 4 * 3)), "opaque first pixel");
+    CHECK(o.hitsOpaque(topLeft + QPoint(7 * 3 + 2, 7 * 3 + 2)), "opaque last pixel (scaled)");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(4 * 3 - 1, 4 * 3)), "transparent pixel left of region");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(8 * 3, 5 * 3)), "transparent pixel right of region");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(20 * 3, 10 * 3)), "transparent far pixel");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(-1, 14)), "outside left");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(14, -1)), "outside top");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(CatSprite::Width * 3, 14)), "outside right");
+    CHECK(!o.hitsOpaque(topLeft + QPoint(14, CatSprite::Height * 3)), "outside bottom");
+
+    o.hide();
+    CHECK(!o.hitsOpaque(topLeft + QPoint(14, 14)), "false when hidden again");
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
@@ -262,5 +301,6 @@ int main(int argc, char **argv)
     testClickRules();
     testAutoStartUi();
     testVolumeSlider();
+    testHitsOpaque();
     return testing::testResult("test_popup");
 }

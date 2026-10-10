@@ -26,6 +26,7 @@ const char *stateName(CatBrain::State s)
 {
     switch (s) {
     case CatBrain::State::Hidden:       return "Hidden";
+    case CatBrain::State::Grabbed:      return "Grabbed";
     case CatBrain::State::Falling:      return "Falling";
     case CatBrain::State::QuitBlock:    return "QuitBlock";
     case CatBrain::State::TrayApproach: return "TrayApproach";
@@ -62,6 +63,8 @@ CatBrain::State CatBrain::state() const
 {
     if (m_hidden)
         return State::Hidden;
+    if (m_body.mode() == Locomotion::Mode::Held)
+        return State::Grabbed;
     if (m_falling)
         return State::Falling;
     return m_intent;
@@ -88,7 +91,7 @@ void CatBrain::setPopupRect(const QRect &popup)
 
 bool CatBrain::spawned() const
 {
-    return m_body.mode() == Locomotion::Mode::Airborne || m_body.attachment().has_value();
+    return m_body.mode() != Locomotion::Mode::Attached || m_body.attachment().has_value();
 }
 
 const SurfaceSegment *CatBrain::segmentOf(const SurfacePoint &p) const
@@ -379,6 +382,43 @@ bool CatBrain::updateHidden()
     return m_hidden;
 }
 
+bool CatBrain::updateGrabbed()
+{
+    // 잡혀 있는 동안: 경로 중단, 클릭 통과 복구 (CatApp 이 grabbing 으로 따로 끈다), 의도는 그대로.
+    // 놓이면 몸이 Airborne 이 되어 updateFalling → 착지 → restartIntent 로 이어진다
+    if (m_body.mode() != Locomotion::Mode::Held)
+        return false;
+    restoreClickThrough();
+    abortRoute();
+    return true;
+}
+
+bool CatBrain::grab(QPoint gripDesktop)
+{
+    if (!spawned() || m_hidden || m_intent == State::QuitBlock)
+        return false;
+    qCInfo(lcBrain) << "state" << stateName(state()) << "-> Grabbed";
+    restoreClickThrough();
+    abortRoute();
+    m_swipePending = false;
+    m_pokeArmed = false;
+    m_body.hold(gripDesktop);
+    return true;
+}
+
+void CatBrain::moveGrab(QPoint gripDesktop)
+{
+    m_body.moveHeld(gripDesktop);
+}
+
+void CatBrain::releaseGrab()
+{
+    if (m_body.mode() != Locomotion::Mode::Held)
+        return;
+    qCInfo(lcBrain) << "released, resume" << stateName(m_intent);
+    m_body.release();
+}
+
 bool CatBrain::updateFalling()
 {
     // 경로의 Jump / WalkOff 로 공중에 있는 것은 정상. 그 밖의 공중 상태(발판 소실 등)가 Falling
@@ -415,6 +455,8 @@ void CatBrain::tick(qint64 nowMs)
         return;
     if (updateHidden())
         return;
+    if (updateGrabbed())
+        return;
     if (updateFalling())
         return;
     if (!m_body.attachment())
@@ -436,7 +478,8 @@ void CatBrain::onUserMoved(QPoint pos)
     m_cursorKnown = true;
     m_cursorChangedMs = m_now;
     m_idlePending = false;
-    if (m_intent == State::MousePlay) {
+    // 잡혀 있을 때는 커서가 움직이는 게 당연하므로 건드리지 않는다 (stop() 이 잡기를 풀어 버림). 놓이면 restartIntent 가 Autonomous 로
+    if (m_intent == State::MousePlay && m_body.mode() != Locomotion::Mode::Held) {
         m_body.stop();   // 즉시 중단 → idle
         enterAutonomous("user moved");
     }

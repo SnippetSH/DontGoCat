@@ -4,6 +4,7 @@
 #include "TestSnapshot.hpp"
 
 #include "CatBrain.hpp"
+#include "CatSprite.hpp"
 #include "Config.hpp"
 #include "Locomotion.hpp"
 #include "MouseWatcher.hpp"
@@ -136,6 +137,7 @@ static const char *stName(CatBrain::State s)
 {
     switch (s) {
     case CatBrain::State::Hidden: return "Hidden";
+    case CatBrain::State::Grabbed: return "Grabbed";
     case CatBrain::State::Falling: return "Falling";
     case CatBrain::State::QuitBlock: return "QuitBlock";
     case CatBrain::State::TrayApproach: return "TrayApproach";
@@ -585,6 +587,76 @@ static void testHiddenFalling()
     CHECK(s3.until([&] { return std::abs(s3.body.anchor().x() - 1705) < 6 && !s3.body.isBusy(); }, 30000), "arrived after jump down");
 }
 
+// 5b. grabbed (R10)
+static void testGrabbed()
+{
+    std::printf("[5b] grabbed\n");
+    g_log.clear();
+    const auto anchorFor = [](QPoint grip, CatFacing f) {
+        return grip + (CatSprite::anchorIn(CatGravity::Down) - CatSprite::hangGripIn(f)) * 3;
+    };
+
+    // 자율 행동 중 잡기 → 경로 중단 → 놓기 → Falling → 착지 → Autonomous
+    Sim sim(fullSnap());
+    sim.spawnAt(QPoint(1000, kFloorY));
+    sim.run(2000);
+    const QPoint grip(950, 600);   // A(~900) 와 B(1000~) 사이 허공: 아래는 모니터 바닥
+    CHECK(sim.brain.grab(grip), "grab accepted");
+    CHECK(sim.body.mode() == Locomotion::Mode::Held, "body Held");
+    CHECK(sim.brain.state() == CatBrain::State::Grabbed, "state Grabbed (%s)", stName(sim.brain.state()));
+    sim.run(500);
+    CHECK(sim.brain.state() == CatBrain::State::Grabbed && sim.body.frame().anim == CatAnim::Hang, "still grabbed");
+    CHECK(sim.body.anchor() == anchorFor(grip, sim.body.frame().facing), "anchor from grip");
+    const QPoint grip2(950, 500);
+    sim.brain.moveGrab(grip2);
+    sim.run(100);
+    CHECK(sim.body.anchor() == anchorFor(grip2, sim.body.frame().facing), "moveGrab follows");
+    sim.brain.releaseGrab();
+    sim.step();
+    CHECK(sim.brain.state() == CatBrain::State::Falling, "Falling after release (%s)", stName(sim.brain.state()));
+    CHECK(sim.until([&] { return sim.brain.state() != CatBrain::State::Falling; }, 5000), "landed");
+    CHECK(sim.brain.state() == CatBrain::State::Autonomous, "resumed autonomous (%s)", stName(sim.brain.state()));
+    CHECK(sim.body.attachment() && sim.body.attachment()->surface.owner == 0, "on the floor");
+    sim.run(3000);
+
+    // TrayApproach 중 잡기 → 놓으면 접근 재개
+    Sim s2(fullSnap());
+    s2.spawnAt(QPoint(500, kFloorY));
+    s2.brain.onUserMoved(QPoint(1800, 1000));
+    s2.brain.onTrayApproach(true, QPoint(1700, kFloorY));
+    s2.run(500);
+    CHECK(s2.brain.grab(QPoint(1050, 600)), "grab during tray approach");
+    s2.run(1000);
+    CHECK(s2.brain.state() == CatBrain::State::Grabbed, "grabbed while approaching");
+    s2.brain.releaseGrab();
+    CHECK(s2.until([&] { return s2.body.mode() == Locomotion::Mode::Attached && s2.brain.state() == CatBrain::State::TrayApproach; }, 5000),
+          "tray approach resumes (%s)", stName(s2.brain.state()));
+    CHECK(s2.until([&] { return s2.body.anchor().x() == 1700 && !s2.body.isBusy(); }, 60000), "arrived x=%d", s2.body.anchor().x());
+
+    // QuitBlock 중에는 거절
+    Sim s3(fullSnap());
+    s3.spawnAt(QPoint(500, kFloorY));
+    s3.brain.setPopupRect(QRect(1610, 900, 190, 140));
+    s3.brain.onBlockRequested(QRect(1657, 1016, 96, 24));
+    s3.run(500);
+    CHECK(!s3.brain.grab(QPoint(1050, 600)), "grab refused during QuitBlock");
+    CHECK(s3.body.mode() != Locomotion::Mode::Held, "body not Held");
+    CHECK(s3.brain.state() == CatBrain::State::QuitBlock, "still QuitBlock (%s)", stName(s3.brain.state()));
+
+    // Hidden 이 되면 잡힘이 풀리고, Hidden 중에는 거절
+    Sim s4(fullSnap());
+    s4.spawnAt(QPoint(500, kFloorY));
+    CHECK(s4.brain.grab(QPoint(1050, 600)), "grab before hidden");
+    DesktopSnapshot fs = fullSnap();
+    fs.monitors[0].fullscreen = true;
+    s4.setSnap(fs);
+    s4.step();
+    CHECK(s4.brain.state() == CatBrain::State::Hidden, "hidden (%s)", stName(s4.brain.state()));
+    CHECK(s4.body.mode() != Locomotion::Mode::Held, "grab released by hidden");
+    CHECK(!s4.brain.grab(QPoint(1050, 600)), "grab refused while hidden");
+    s4.brain.releaseGrab();   // Held 가 아니면 무시
+}
+
 // 6. replan
 static void testReplan()
 {
@@ -618,6 +690,7 @@ int main(int argc, char **argv)
     testBlockApproach();
     testMousePlay();
     testHiddenFalling();
+    testGrabbed();
     testReplan();
     return testing::testResult("test_brain");
 }
