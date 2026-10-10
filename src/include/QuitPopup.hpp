@@ -7,10 +7,12 @@
 class QButtonGroup;
 class QCheckBox;
 class QPushButton;
+class QSlider;
+class QTimer;
 
 // 트레이 아이콘 클릭 시 뜨는 작은 팝업 (README 5.6).
 // - Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint  (Qt::Popup 금지: 고양이 클릭이 바깥 클릭이 됨)
-// - 상단: 얼굴 아이콘 + "DontGoCat", 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스, 하단: 종료 버튼
+// - 상단: 얼굴 아이콘 + "DontGoCat", 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스, 음량 슬라이더, 하단: 종료 버튼
 // - 팝업 하단과 종료 버튼 하단 = 바닥 y (작업표시줄 윗면) → 바닥의 고양이가 버튼을 덮을 수 있다
 // - 종료 버튼 크기 = Config::kQuitButtonW × kQuitButtonH (물리 px 고정, 배율과 무관)
 // - 앱 비활성화 / Esc 로 닫힘
@@ -26,6 +28,8 @@ public:
     bool autoStartChecked() const;
     void setSoundChecked(bool checked);       // 시그널 없이 체크 상태만 갱신 (표시 직전 현재 설정 반영)
     bool soundChecked() const;
+    void setVolume(int percent);              // 시그널 없이 슬라이더 값만 갱신
+    int volume() const;
 
     // anchorRect: 트레이 아이콘(또는 TrayNotifyWnd) 사각형, floorY: 바닥 y, monitor: 화면 밖 방지용
     void showAt(const QRect &anchorRect, int floorY, const QRect &monitor);
@@ -42,6 +46,7 @@ signals:
     void scaleSelected(int scale);
     void autoStartToggled(bool enabled);                  // 사용자가 체크박스를 눌렀다
     void soundToggled(bool enabled);                      // 사용자가 소리 체크박스를 눌렀다
+    void volumeSelected(int percent);                     // 사용자가 음량을 정했다 (변경이 멈춘 뒤 한 번, 같은 값이면 나가지 않음)
     void closed();
 
 protected:
@@ -59,6 +64,9 @@ private:
     QButtonGroup *m_scaleGroup = nullptr;
     QCheckBox *m_autoStart = nullptr;
     QCheckBox *m_sound = nullptr;
+    QSlider *m_volume = nullptr;
+    QTimer *m_volumeCommit = nullptr;   // 클릭 이동 + 놓기, 휠 연속 변경을 한 번의 volumeSelected 로 묶는다
+    int m_committedVolume = 0;          // 마지막으로 알린(또는 setVolume 으로 받은) 값
     int m_scale = 3;
 
     // 마지막 showAt 인자 (배율이 바뀌면 같은 기준으로 다시 배치)

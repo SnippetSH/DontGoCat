@@ -12,7 +12,7 @@ class QRandomGenerator;
 // 고양이 울음소리. Config::kMeowMinMs ~ kMeowMaxMs 사이 무작위 간격마다 판정해서
 // Config::kMeowChance % 확률로 리소스(:/sounds/meow1~N.wav) 중 하나를 골라 재생한다.
 // 재생은 Win32 PlaySound(SND_MEMORY | SND_ASYNC) — Qt Multimedia 없이 exe 안의 wav 를 그대로 쓴다.
-// - 크기: PlaySound 에 볼륨이 없어서 로드 시 샘플에 Config::kMeowVolume % 를 곱해 둔다.
+// - 크기: PlaySound 에 볼륨이 없어서 원본 wav 를 보관해 두고, setVolume 때마다 샘플에 % 를 곱한 사본을 다시 만든다.
 // - 꺼져 있거나(setEnabled(false)) canMeow() 가 false(자는 중 / 숨은 중)면 판정 없이 다음 간격만 다시 잡는다.
 class CatVoice : public QObject
 {
@@ -31,6 +31,10 @@ public:
 
     void setEnabled(bool enabled);   // 끄면 재생 중인 소리도 멈춘다
     bool isEnabled() const { return m_enabled; }
+
+    void setVolume(int percent);     // 0~100. 재생 중인 소리를 멈추고 사본을 다시 만든다
+    int volume() const { return m_volume; }
+    void preview();                  // 지금 크기로 무작위 소리 하나 즉시 재생 (꺼져 있으면 무시, 자는 중이어도 재생)
 
     void start();                    // 첫 판정 타이머 시작
     int nextIntervalMs() const { return m_timer.interval(); }
@@ -53,6 +57,8 @@ private:
     Gate m_canMeow;
     QRandomGenerator *m_rng = nullptr;
     QTimer m_timer;
-    std::vector<QByteArray> m_sounds;   // wav 전체 (SND_ASYNC 재생 중에도 살아 있어야 한다)
+    std::vector<QByteArray> m_originals;   // 리소스에서 읽은 원본 wav
+    std::vector<QByteArray> m_sounds;      // 크기 적용 사본 (SND_ASYNC 재생 중에도 살아 있어야 한다)
+    int m_volume = 100;
     bool m_enabled = true;
 };

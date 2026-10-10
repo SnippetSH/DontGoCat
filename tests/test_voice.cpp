@@ -3,6 +3,7 @@
 //   - 판정 중 울음 비율 ≈ kMeowChance %, 소리 번호 ∈ [0, kMeowSoundCount) 이고 모두 한 번 이상 나온다
 //   - 꺼져 있거나 canMeow() 가 false 면 울지 않지만 다음 간격은 계속 잡는다
 //   - scaledWav: 16-bit PCM data 청크만 percent 비율로 줄이고 헤더 / 다른 청크는 그대로
+//   - setVolume 은 0~100 으로 자르고, preview 는 켜져 있을 때만 즉시 한 번 재생 (자는 중이어도)
 #include "TestCheck.hpp"
 
 #include "CatVoice.hpp"
@@ -114,11 +115,35 @@ static void testVolume()
     CHECK(CatVoice::scaledWav(QByteArray("junk"), 50) == QByteArray("junk"), "non-wav untouched");
 }
 
+static void testSetVolumePreview()
+{
+    std::printf("[4] setVolume / preview\n");
+    QRandomGenerator rng(7);
+    int played = 0;
+    CatVoice voice(nullptr, [&](int) { ++played; });
+    voice.setRandomGenerator(&rng);
+    CHECK(voice.volume() == Config::kMeowVolume, "default volume %d", voice.volume());
+    voice.setVolume(40);
+    CHECK(voice.volume() == 40, "volume 40 (%d)", voice.volume());
+    voice.setVolume(250);
+    CHECK(voice.volume() == 100, "clamped high (%d)", voice.volume());
+    voice.setVolume(-5);
+    CHECK(voice.volume() == 0, "clamped low (%d)", voice.volume());
+
+    voice.setCanMeow([]() { return false; });   // 자는 중이어도 미리듣기는 재생
+    voice.preview();
+    CHECK(played == 1, "preview plays once (%d)", played);
+    voice.setEnabled(false);
+    voice.preview();
+    CHECK(played == 1, "preview ignored when disabled (%d)", played);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     testChanceAndInterval();
     testSilenced();
     testVolume();
+    testSetVolumePreview();
     return testing::testResult("test_voice");
 }

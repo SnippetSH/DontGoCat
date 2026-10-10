@@ -11,13 +11,16 @@
 #include "AutoStart.hpp"
 
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QCheckBox>
 #include <QPushButton>
+#include <QSlider>
 #include <QThread>
 
 #include <windows.h>
 
 #include <cstdio>
+#include <vector>
 
 static void testPopupLayout()
 {
@@ -53,6 +56,14 @@ static void testPopupLayout()
             CHECK(c.top() > scalesBottom, "scale %d checkbox below scale row (%d > %d)", s, c.top(), scalesBottom);
             CHECK(c.bottom() < b.top(), "scale %d checkbox above quit button", s);
             CHECK(r.contains(c), "scale %d checkbox inside popup", s);
+        }
+        // 음량 슬라이더: 종료 버튼 위, 팝업 안
+        auto *vol = p.findChild<QSlider *>(QStringLiteral("volume"));
+        CHECK(vol != nullptr, "scale %d volume slider exists", s);
+        if (vol) {
+            const QRect v(vol->mapToGlobal(QPoint(0, 0)), vol->size());
+            CHECK(v.bottom() < b.top(), "scale %d slider above quit button", s);
+            CHECK(r.contains(v), "scale %d slider inside popup", s);
         }
         if (s == Config::kMinScale)
             firstPopupSize = r.size();
@@ -190,6 +201,58 @@ static void testAutoStartUi()
     RegDeleteTreeW(HKEY_CURRENT_USER, testRoot.toStdWString().c_str());
 }
 
+// 음량 슬라이더: 트랙 클릭(값 이동 후 놓기), 끌기, 휠 연속 변경이 각각 volumeSelected 한 번으로 묶이는지
+static void testVolumeSlider()
+{
+    std::printf("[4] volume slider\n");
+    QuitPopup p;
+    auto *vol = p.findChild<QSlider *>(QStringLiteral("volume"));
+    CHECK(vol != nullptr, "slider exists");
+    if (!vol)
+        return;
+    std::vector<int> emitted;
+    QObject::connect(&p, &QuitPopup::volumeSelected, [&](int v) { emitted.push_back(v); });
+    auto settle = [] {
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 400)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    };
+
+    p.setVolume(20);
+    settle();
+    CHECK(emitted.empty(), "setVolume does not emit (%zu)", emitted.size());
+
+    // 트랙 클릭: 핸들이 먼저 이동(valueChanged, 눌림 전) → 눌림 → 놓기
+    vol->setValue(70);
+    vol->setSliderDown(true);
+    vol->setSliderDown(false);
+    settle();
+    CHECK(emitted.size() == 1 && emitted.back() == 70, "track click emits once (%zu)", emitted.size());
+
+    // 끌기: 눌린 채 여러 값 → 지연 시간이 지나도 놓기 전에는 알리지 않음 → 놓으면 한 번
+    vol->setSliderDown(true);
+    for (int v = 72; v <= 90; v += 2)
+        vol->setValue(v);
+    settle();
+    CHECK(emitted.size() == 1, "no emit while dragging (%zu)", emitted.size());
+    vol->setSliderDown(false);
+    settle();
+    CHECK(emitted.size() == 2 && emitted.back() == 90, "drag release emits once (%zu)", emitted.size());
+
+    // 휠 연속 변경 → 한 번
+    for (int v = 85; v >= 60; v -= 5)
+        vol->setValue(v);
+    settle();
+    CHECK(emitted.size() == 3 && emitted.back() == 60, "wheel burst emits once (%zu)", emitted.size());
+
+    // 같은 값으로 놓기 → 알리지 않음
+    vol->setSliderDown(true);
+    vol->setSliderDown(false);
+    settle();
+    CHECK(emitted.size() == 3, "unchanged release ignored (%zu)", emitted.size());
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
@@ -198,5 +261,6 @@ int main(int argc, char **argv)
     testPopupLayout();
     testClickRules();
     testAutoStartUi();
+    testVolumeSlider();
     return testing::testResult("test_popup");
 }

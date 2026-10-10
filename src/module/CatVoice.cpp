@@ -15,7 +15,7 @@
 #include <cstring>
 #include <utility>
 
-static_assert(Config::kMeowVolume >= 0 && Config::kMeowVolume <= 100, "kMeowVolume 은 0~100 (%)");
+static_assert(Config::kMeowVolume >= 0 && Config::kMeowVolume <= 100, "kMeowVolume 은 0~100 (%)");   // 기본값
 
 CatVoice::CatVoice(QObject *parent, Player player)
     : QObject(parent)
@@ -28,9 +28,10 @@ CatVoice::CatVoice(QObject *parent, Player player)
         // 리소스에서 한 번만 읽어 둔다. 없거나 비어 있으면 그 번호는 건너뛴다 (play 에서 확인)
         for (int i = 1; i <= Config::kMeowSoundCount; ++i) {
             QFile f(QStringLiteral(":/sounds/meow%1.wav").arg(i));
-            m_sounds.push_back(f.open(QIODevice::ReadOnly) ? scaledWav(f.readAll(), Config::kMeowVolume) : QByteArray());
+            m_originals.push_back(f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray());
         }
     }
+    setVolume(Config::kMeowVolume);
 }
 
 CatVoice::~CatVoice()
@@ -83,6 +84,21 @@ void CatVoice::setEnabled(bool enabled)
     m_enabled = enabled;
     if (!enabled)
         stopPlayback();
+}
+
+void CatVoice::setVolume(int percent)
+{
+    m_volume = std::clamp(percent, 0, 100);
+    stopPlayback();   // 재생 중인 버퍼를 바꾸기 전에 끊는다
+    m_sounds.clear();
+    for (const QByteArray &wav : m_originals)
+        m_sounds.push_back(scaledWav(wav, m_volume));
+}
+
+void CatVoice::preview()
+{
+    if (m_enabled)
+        play(rng().bounded(Config::kMeowSoundCount));
 }
 
 void CatVoice::start()

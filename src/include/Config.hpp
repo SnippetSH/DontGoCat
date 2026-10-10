@@ -14,6 +14,7 @@ inline constexpr const char *kSettingsOrg = "DontGoCat";
 inline constexpr const char *kSettingsApp = "DontGoCat";
 inline constexpr const char *kSettingsScaleKey = "scale";
 inline constexpr const char *kSettingsSoundKey = "sound";   // 고양이 소리 켜기/끄기 (기본 켜짐)
+inline constexpr const char *kSettingsVolumeKey = "volume"; // 고양이 소리 크기 % (없으면 kMeowVolume)
 
 // ── 타이머 ──────────────────────────────────────────
 inline constexpr int kTickMs = 16;            // 메인 tick (Locomotion, CatBrain)
@@ -134,6 +135,6 @@ inline constexpr int kMeowMinMs = 5000;               // 판정 간격 범위 (�
 inline constexpr int kMeowMaxMs = 15000;
 inline constexpr int kMeowChance = 70;                // %, 판정마다 울 확률 (자는 중 / 숨은 중에는 판정 없이 건너뜀)
 inline constexpr int kMeowSoundCount = 4;             // 리소스 :/sounds/meow1.wav ~ meowN.wav
-inline constexpr int kMeowVolume = 20;               // %, 0~100. 원본 wav 대비 소리 크기 (시작 시 샘플에 곱함, 100 = 원본)
+inline constexpr int kMeowVolume = 20;               // %, 0~100. 원본 wav 대비 소리 크기의 기본값 (저장된 값이 없을 때. 이후는 트레이 팝업 슬라이더)
 
 } // namespace Config

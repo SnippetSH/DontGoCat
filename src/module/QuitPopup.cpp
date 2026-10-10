@@ -12,6 +12,9 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPushButton>
+#include <QSignalBlocker>
+#include <QSlider>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -25,6 +28,8 @@ constexpr int kScaleButtonW = 36;
 constexpr int kScaleButtonGap = 4;
 constexpr int kBorderPx = 1;
 constexpr int kFontPt = 9;
+constexpr int kVolumeStep = 5;             // 음량 슬라이더 휠 / 키 단위 (%)
+constexpr int kVolumeCommitMs = 150;       // 음량 변경이 이 시간 멈추면 확정 (끄는 중에는 놓을 때까지 미룸)
 constexpr int kQuitFontPx = 12;            // 종료 버튼 글자 크기 (버튼 높이 16px 에 맞춤)
 
 const char *kStyleSheet =
@@ -34,6 +39,8 @@ const char *kStyleSheet =
     "QPushButton#scale:hover { background: #FDE3B4; }"
     "QPushButton#scale:checked { background: #F9BD61; font-weight: bold; }"
     "QCheckBox#autostart, QCheckBox#sound { color: #311410; spacing: 6px; }"
+    "QLabel#volumeLabel { color: #311410; }"
+    "QLabel#volumeLabel:disabled { color: #A89A90; }"
     "QPushButton#quit { background: #D9534F; color: #FFFFFF; border: none; border-radius: 0;"
     "                   padding: 0; font-weight: bold; }"
     "QPushButton#quit:hover { background: #E26A5A; }"
@@ -104,6 +111,43 @@ QuitPopup::QuitPopup(QWidget *parent)
     root->addWidget(m_sound);
     connect(m_sound, &QCheckBox::clicked, this, &QuitPopup::soundToggled);
 
+    // 음량 슬라이더 (0~100%). 소리가 꺼져 있으면 비활성화.
+    // 트랙 클릭은 핸들을 바로 옮긴 뒤(valueChanged) 놓기(sliderReleased)가 또 오므로, 변경이 잠시 멈춘 뒤
+    // 마지막 확정값과 다를 때만 한 번 알린다 (미리듣기가 겹쳐 재생되지 않게)
+    auto *volumeRow = new QHBoxLayout;
+    volumeRow->setSpacing(kGapPx);
+    auto *volumeLabel = new QLabel(QString::fromUtf8("음량"), this);
+    volumeLabel->setObjectName(QStringLiteral("volumeLabel"));
+    m_volume = new QSlider(Qt::Horizontal, this);
+    m_volume->setObjectName(QStringLiteral("volume"));
+    m_volume->setFocusPolicy(Qt::NoFocus);
+    m_volume->setRange(0, 100);
+    m_volume->setSingleStep(kVolumeStep);
+    m_volume->setPageStep(kVolumeStep * 2);
+    m_volume->setValue(Config::kMeowVolume);
+    m_committedVolume = Config::kMeowVolume;
+    volumeRow->addWidget(volumeLabel);
+    volumeRow->addWidget(m_volume, 1);
+    root->addLayout(volumeRow);
+    m_volumeCommit = new QTimer(this);
+    m_volumeCommit->setSingleShot(true);
+    m_volumeCommit->setInterval(kVolumeCommitMs);
+    connect(m_volumeCommit, &QTimer::timeout, this, [this]() {
+        if (m_volume->isSliderDown())
+            return;   // 아직 끄는 중: 놓을 때 다시 예약된다
+        const int v = m_volume->value();
+        if (v == m_committedVolume)
+            return;
+        m_committedVolume = v;
+        emit volumeSelected(v);
+    });
+    connect(m_volume, &QSlider::valueChanged, m_volumeCommit, qOverload<>(&QTimer::start));
+    connect(m_volume, &QSlider::sliderReleased, m_volumeCommit, qOverload<>(&QTimer::start));
+    connect(m_sound, &QCheckBox::toggled, this, [this, volumeLabel](bool on) {
+        m_volume->setEnabled(on);
+        volumeLabel->setEnabled(on);
+    });
+
     // 하단: 종료 버튼 (Config 고정 크기, 배율과 무관)
     m_quitButton = new QPushButton(QStringLiteral("종료"), this);
     m_quitButton->setObjectName(QStringLiteral("quit"));
@@ -143,6 +187,19 @@ void QuitPopup::setSoundChecked(bool checked)
 bool QuitPopup::soundChecked() const
 {
     return m_sound->isChecked();
+}
+
+void QuitPopup::setVolume(int percent)
+{
+    const QSignalBlocker block(m_volume);
+    m_volume->setValue(percent);
+    m_committedVolume = m_volume->value();
+    m_volumeCommit->stop();
+}
+
+int QuitPopup::volume() const
+{
+    return m_volume->value();
 }
 
 QIcon QuitPopup::faceIcon()

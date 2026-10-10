@@ -35,6 +35,9 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     const bool sound = QSettings().value(Config::kSettingsSoundKey, true).toBool();
     m_voice.setEnabled(sound);
     m_tray.setSoundEnabled(sound);
+    const int volume = std::clamp(QSettings().value(Config::kSettingsVolumeKey, Config::kMeowVolume).toInt(), 0, 100);
+    m_voice.setVolume(volume);
+    m_tray.setVolume(volume);
     m_voice.setCanMeow([this]() { return m_brain.state() != CatBrain::State::Hidden && !m_brain.isSleeping(); });
 
     m_tickTimer.setTimerType(Qt::PreciseTimer);
@@ -68,6 +71,11 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     connect(&m_tray, &TrayController::soundChanged, this, [this](bool enabled) {
         m_voice.setEnabled(enabled);
         QSettings().setValue(Config::kSettingsSoundKey, enabled);
+    });
+    connect(&m_tray, &TrayController::volumeChanged, this, [this](int percent) {
+        m_voice.setVolume(percent);
+        m_voice.preview();   // 바뀐 크기를 바로 들려준다
+        QSettings().setValue(Config::kSettingsVolumeKey, m_voice.volume());
     });
 
     // 두뇌 → 트레이 / 오버레이
