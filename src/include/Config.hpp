@@ -130,8 +130,9 @@ inline constexpr int kWanderMinSpritePx = 16;         // 현재 면 위 배회 �
 inline constexpr int kWanderMaxSpritePx = 80;
 inline constexpr int kExploreRunMinSpritePx = 150;    // 탐험 목표가 이보다 멀면 달리기를 우선
 
-// ── 울음소리 (CatVoice) — 이벤트(종료 방해 / 슬라이더)에서만 운다 ──
+// ── 울음소리 (CatVoice) — 이벤트(종료 방해 / 잡기 / 슬라이더)에서만 운다 ──
 inline constexpr int kMeowSoundCount = 4;             // 리소스 :/sounds/meow1.wav ~ meowN.wav
+inline constexpr int kGrabSoundCount = 1;             // 잡히는 순간 소리, 리소스 :/sounds/grab1.wav ~ grabN.wav
 inline constexpr int kMeowVolume = 20;               // %, 0~100. 원본 wav 대비 소리 크기의 기본값 (저장된 값이 없을 때. 이후는 트레이 팝업 슬라이더)
 
 } // namespace Config

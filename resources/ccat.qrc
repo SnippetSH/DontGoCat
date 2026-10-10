@@ -14,5 +14,7 @@
         <file alias="meow2.wav">../assets/sounds/meow2.wav</file>
         <file alias="meow3.wav">../assets/sounds/meow3.wav</file>
         <file alias="meow4.wav">../assets/sounds/meow4.wav</file>
+        <!-- 잡히는 순간 (CatVoice::grabCry). 원본 meow-sound/mmeow1.mp3 (CC0) -->
+        <file alias="grab1.wav">../assets/sounds/mmeow1.wav</file>
     </qresource>
 </RCC>

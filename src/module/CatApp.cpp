@@ -112,8 +112,10 @@ void CatApp::onCatPressed(Qt::KeyboardModifiers modifiers)
 {
     // 방해 중 Shift+클릭은 즉시 종료(TrayController), 아닐 때의 Shift+클릭이 잡기 (README 5.6, 5.13)
     if ((modifiers & Qt::ShiftModifier) && !m_tray.isBlocking()) {
-        if (m_brain.grab(QCursor::pos()))
+        if (m_brain.grab(QCursor::pos())) {
             m_grabbing = true;
+            m_voice.grabCry();   // 잡히는 순간에만 (README 5.12)
+        }
         return;
     }
     m_tray.onCatClicked(modifiers);

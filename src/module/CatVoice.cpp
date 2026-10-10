@@ -23,10 +23,14 @@ CatVoice::CatVoice(QObject *parent, Player player)
 {
     if (!m_player) {
         // 리소스에서 한 번만 읽어 둔다. 없거나 비어 있으면 그 번호는 건너뛴다 (play 에서 확인)
-        for (int i = 1; i <= Config::kMeowSoundCount; ++i) {
-            QFile f(QStringLiteral(":/sounds/meow%1.wav").arg(i));
+        auto load = [this](const QString &path) {
+            QFile f(path);
             m_originals.push_back(f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray());
-        }
+        };
+        for (int i = 1; i <= Config::kMeowSoundCount; ++i)
+            load(QStringLiteral(":/sounds/meow%1.wav").arg(i));
+        for (int i = 1; i <= Config::kGrabSoundCount; ++i)
+            load(QStringLiteral(":/sounds/grab%1.wav").arg(i));
     }
     setVolume(Config::kMeowVolume);
 }
@@ -96,6 +100,12 @@ void CatVoice::meow()
 {
     if (m_enabled)
         play(rng().bounded(Config::kMeowSoundCount));
+}
+
+void CatVoice::grabCry()
+{
+    if (m_enabled)
+        play(Config::kMeowSoundCount + rng().bounded(Config::kGrabSoundCount));
 }
 
 void CatVoice::play(int index)

@@ -4,6 +4,7 @@
 //   - 꺼져 있으면 재생하지 않는다
 //   - scaledWav: 16-bit PCM data 청크만 percent 비율로 줄이고 헤더 / 다른 청크는 그대로
 //   - setVolume 은 0~100 으로 자르고, 기본값은 kMeowVolume
+//   - grabCry() 한 번 = 한 번 재생, 번호 ∈ [kMeowSoundCount, kMeowSoundCount + kGrabSoundCount), 꺼져 있으면 재생 안 함
 #include "TestCheck.hpp"
 
 #include "CatVoice.hpp"
@@ -114,6 +115,26 @@ static void testSetVolume()
     CHECK(voice.volume() == 0, "clamped low (%d)", voice.volume());
 }
 
+static void testGrabCry()
+{
+    std::printf("[5] grab cry\n");
+    QRandomGenerator rng(5);
+    std::vector<int> played;
+    CatVoice voice(nullptr, [&](int index) { played.push_back(index); });
+    voice.setRandomGenerator(&rng);
+    for (int i = 0; i < 50; ++i)
+        voice.grabCry();
+    CHECK(played.size() == 50, "every grabCry plays (%zu)", played.size());
+    int bad = 0;
+    for (int index : played)
+        if (index < Config::kMeowSoundCount || index >= Config::kMeowSoundCount + Config::kGrabSoundCount)
+            ++bad;
+    CHECK(bad == 0, "grab index range (%d bad)", bad);
+    voice.setEnabled(false);
+    voice.grabCry();
+    CHECK(played.size() == 50, "disabled: no play (%zu)", played.size());
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -121,5 +142,6 @@ int main(int argc, char **argv)
     testAllSoundsAppear();
     testVolume();
     testSetVolume();
+    testGrabCry();
     return testing::testResult("test_voice");
 }
