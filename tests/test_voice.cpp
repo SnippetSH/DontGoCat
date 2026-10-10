@@ -1,9 +1,9 @@
-// CatVoice 울음 판정 테스트. 재생은 가짜 Player 로 바꿔 실제 소리를 내지 않고, meowTick() 을 직접 호출한다.
-//   - 다음 판정 간격 ∈ [kMeowMinMs, kMeowMaxMs]
-//   - 판정 중 울음 비율 ≈ kMeowChance %, 소리 번호 ∈ [0, kMeowSoundCount) 이고 모두 한 번 이상 나온다
-//   - 꺼져 있거나 canMeow() 가 false 면 울지 않지만 다음 간격은 계속 잡는다
+// CatVoice 테스트. 재생은 가짜 Player 로 바꿔 실제 소리를 내지 않는다.
+//   - meow() 한 번 = 정확히 한 번 재생, 소리 번호 ∈ [0, kMeowSoundCount)
+//   - 여러 번 부르면 (시드 고정 난수) 모든 소리 번호가 한 번 이상 나온다
+//   - 꺼져 있으면 재생하지 않는다
 //   - scaledWav: 16-bit PCM data 청크만 percent 비율로 줄이고 헤더 / 다른 청크는 그대로
-//   - setVolume 은 0~100 으로 자르고, preview 는 켜져 있을 때만 즉시 한 번 재생 (자는 중이어도)
+//   - setVolume 은 0~100 으로 자르고, 기본값은 kMeowVolume
 #include "TestCheck.hpp"
 
 #include "CatVoice.hpp"
@@ -16,10 +16,26 @@
 #include <cstdio>
 #include <vector>
 
-static void testChanceAndInterval()
+static void testMeowOnce()
 {
-    std::printf("[1] chance / interval\n");
+    std::printf("[1] meow once\n");
     QRandomGenerator rng(1234);
+    int played = 0;
+    int last = -1;
+    CatVoice voice(nullptr, [&](int index) {
+        ++played;
+        last = index;
+    });
+    voice.setRandomGenerator(&rng);
+    voice.meow();
+    CHECK(played == 1, "played once (%d)", played);
+    CHECK(last >= 0 && last < Config::kMeowSoundCount, "index in range (%d)", last);
+}
+
+static void testAllSoundsAppear()
+{
+    std::printf("[2] all sounds appear / disabled\n");
+    QRandomGenerator rng(99);
     std::vector<int> counts(Config::kMeowSoundCount, 0);
     int played = 0;
     int bad = 0;
@@ -32,48 +48,18 @@ static void testChanceAndInterval()
     });
     voice.setRandomGenerator(&rng);
 
-    const int n = 10000;
-    int minMs = 1 << 30, maxMs = 0;
-    for (int i = 0; i < n; ++i) {
-        voice.meowTick();
-        minMs = qMin(minMs, voice.nextIntervalMs());
-        maxMs = qMax(maxMs, voice.nextIntervalMs());
-    }
-    const double ratio = 100.0 * played / n;
-    std::printf("played %d / %d (%.1f%%), interval %d..%d ms\n", played, n, ratio, minMs, maxMs);
+    const int n = 200;
+    for (int i = 0; i < n; ++i)
+        voice.meow();
+    CHECK(played == n, "every meow plays (%d / %d)", played, n);
     CHECK(bad == 0, "sound index out of range (%d)", bad);
-    CHECK(ratio > Config::kMeowChance - 3 && ratio < Config::kMeowChance + 3, "ratio %.1f%%", ratio);
-    CHECK(minMs >= Config::kMeowMinMs, "min interval %d", minMs);
-    CHECK(maxMs <= Config::kMeowMaxMs, "max interval %d", maxMs);
     for (int i = 0; i < Config::kMeowSoundCount; ++i)
         CHECK(counts[i] > 0, "sound %d played (%d)", i, counts[i]);
-}
-
-static void testSilenced()
-{
-    std::printf("[2] disabled / gate\n");
-    QRandomGenerator rng(99);
-    int played = 0;
-    CatVoice voice(nullptr, [&](int) { ++played; });
-    voice.setRandomGenerator(&rng);
 
     voice.setEnabled(false);
-    for (int i = 0; i < 200; ++i)
-        voice.meowTick();
-    CHECK(played == 0, "disabled: played %d", played);
-    CHECK(voice.nextIntervalMs() >= Config::kMeowMinMs, "disabled: still rescheduled");
-
-    bool canMeow = false;   // 자는 중 / 숨은 중
-    voice.setEnabled(true);
-    voice.setCanMeow([&]() { return canMeow; });
-    for (int i = 0; i < 200; ++i)
-        voice.meowTick();
-    CHECK(played == 0, "gate closed: played %d", played);
-
-    canMeow = true;
-    for (int i = 0; i < 200; ++i)
-        voice.meowTick();
-    CHECK(played > 0, "gate open: played %d", played);
+    for (int i = 0; i < n; ++i)
+        voice.meow();
+    CHECK(played == n, "disabled: no play (%d)", played);
 }
 
 // 16-bit PCM wav 를 직접 만들어 scaledWav 가 data 청크만 비율대로 줄이는지 확인
@@ -115,13 +101,10 @@ static void testVolume()
     CHECK(CatVoice::scaledWav(QByteArray("junk"), 50) == QByteArray("junk"), "non-wav untouched");
 }
 
-static void testSetVolumePreview()
+static void testSetVolume()
 {
-    std::printf("[4] setVolume / preview\n");
-    QRandomGenerator rng(7);
-    int played = 0;
-    CatVoice voice(nullptr, [&](int) { ++played; });
-    voice.setRandomGenerator(&rng);
+    std::printf("[4] setVolume\n");
+    CatVoice voice(nullptr, [](int) {});
     CHECK(voice.volume() == Config::kMeowVolume, "default volume %d", voice.volume());
     voice.setVolume(40);
     CHECK(voice.volume() == 40, "volume 40 (%d)", voice.volume());
@@ -129,21 +112,14 @@ static void testSetVolumePreview()
     CHECK(voice.volume() == 100, "clamped high (%d)", voice.volume());
     voice.setVolume(-5);
     CHECK(voice.volume() == 0, "clamped low (%d)", voice.volume());
-
-    voice.setCanMeow([]() { return false; });   // 자는 중이어도 미리듣기는 재생
-    voice.preview();
-    CHECK(played == 1, "preview plays once (%d)", played);
-    voice.setEnabled(false);
-    voice.preview();
-    CHECK(played == 1, "preview ignored when disabled (%d)", played);
 }
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    testChanceAndInterval();
-    testSilenced();
+    testMeowOnce();
+    testAllSoundsAppear();
     testVolume();
-    testSetVolumePreview();
+    testSetVolume();
     return testing::testResult("test_voice");
 }

@@ -21,9 +21,6 @@ CatVoice::CatVoice(QObject *parent, Player player)
     : QObject(parent)
     , m_player(std::move(player))
 {
-    m_timer.setSingleShot(true);
-    connect(&m_timer, &QTimer::timeout, this, &CatVoice::meowTick);
-
     if (!m_player) {
         // 리소스에서 한 번만 읽어 둔다. 없거나 비어 있으면 그 번호는 건너뛴다 (play 에서 확인)
         for (int i = 1; i <= Config::kMeowSoundCount; ++i) {
@@ -95,22 +92,10 @@ void CatVoice::setVolume(int percent)
         m_sounds.push_back(scaledWav(wav, m_volume));
 }
 
-void CatVoice::preview()
+void CatVoice::meow()
 {
     if (m_enabled)
         play(rng().bounded(Config::kMeowSoundCount));
-}
-
-void CatVoice::start()
-{
-    m_timer.start(rng().bounded(Config::kMeowMinMs, Config::kMeowMaxMs + 1));
-}
-
-void CatVoice::meowTick()
-{
-    if (m_enabled && (!m_canMeow || m_canMeow()) && rng().bounded(100) < Config::kMeowChance)
-        play(rng().bounded(Config::kMeowSoundCount));
-    start();
 }
 
 void CatVoice::play(int index)

@@ -31,14 +31,13 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     }
     setScale(scale);
 
-    // 소리: QSettings (기본 켜짐). 자는 중 / 숨은 중에는 울지 않는다
+    // 소리: QSettings (기본 켜짐)
     const bool sound = QSettings().value(Config::kSettingsSoundKey, true).toBool();
     m_voice.setEnabled(sound);
     m_tray.setSoundEnabled(sound);
     const int volume = std::clamp(QSettings().value(Config::kSettingsVolumeKey, Config::kMeowVolume).toInt(), 0, 100);
     m_voice.setVolume(volume);
     m_tray.setVolume(volume);
-    m_voice.setCanMeow([this]() { return m_brain.state() != CatBrain::State::Hidden && !m_brain.isSleeping(); });
 
     m_tickTimer.setTimerType(Qt::PreciseTimer);
     m_tickTimer.setInterval(Config::kTickMs);
@@ -62,6 +61,10 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     connect(&m_tray, &TrayController::blockRequested, &m_brain, &CatBrain::onBlockRequested);
     connect(&m_tray, &TrayController::blockReact, &m_brain, &CatBrain::onBlockReact);
     connect(&m_tray, &TrayController::blockReleased, &m_brain, &CatBrain::onBlockReleased);
+    // 종료 방해 시작 / 유지 반응 / 해제에서 운다
+    connect(&m_tray, &TrayController::blockRequested, &m_voice, &CatVoice::meow);
+    connect(&m_tray, &TrayController::blockReact, &m_voice, &CatVoice::meow);
+    connect(&m_tray, &TrayController::blockReleased, &m_voice, &CatVoice::meow);
     connect(&m_tray, &TrayController::quitRequested, qApp, &QCoreApplication::quit);
     connect(&m_tray, &TrayController::scaleChanged, this, [this](int newScale) {
         setScale(newScale);
@@ -74,7 +77,7 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     });
     connect(&m_tray, &TrayController::volumeChanged, this, [this](int percent) {
         m_voice.setVolume(percent);
-        m_voice.preview();   // 바뀐 크기를 바로 들려준다
+        m_voice.meow();   // 바뀐 크기를 바로 들려준다
         QSettings().setValue(Config::kSettingsVolumeKey, m_voice.volume());
     });
 
@@ -175,7 +178,6 @@ void CatApp::start()
     m_mouse.start();
     m_tickTimer.start();
     m_followTimer.start();
-    m_voice.start();
 }
 
 void CatApp::onSnapshot(const DesktopSnapshot &snapshot)

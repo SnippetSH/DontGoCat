@@ -67,11 +67,6 @@ CatBrain::State CatBrain::state() const
     return m_intent;
 }
 
-bool CatBrain::isSleeping() const
-{
-    return state() == State::Autonomous && m_act == AutoAct::Sleep;
-}
-
 void CatBrain::setScale(int scale)
 {
     if (scale == m_scale)
