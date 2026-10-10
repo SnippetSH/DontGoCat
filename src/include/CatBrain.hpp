@@ -43,6 +43,7 @@ public:
 
     // 현재 유효한 상태 (Hidden / Falling 이 의도보다 우선)
     State state() const;
+    bool isSleeping() const;   // 자율 행동 Sleep 중 (sit → sleep 루프 전체)
 
 public slots:
     void onTrayApproach(bool near, QPoint trayFloorPoint);

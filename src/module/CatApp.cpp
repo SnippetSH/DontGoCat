@@ -31,6 +31,12 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     }
     setScale(scale);
 
+    // 소리: QSettings (기본 켜짐). 자는 중 / 숨은 중에는 울지 않는다
+    const bool sound = QSettings().value(Config::kSettingsSoundKey, true).toBool();
+    m_voice.setEnabled(sound);
+    m_tray.setSoundEnabled(sound);
+    m_voice.setCanMeow([this]() { return m_brain.state() != CatBrain::State::Hidden && !m_brain.isSleeping(); });
+
     m_tickTimer.setTimerType(Qt::PreciseTimer);
     m_tickTimer.setInterval(Config::kTickMs);
     connect(&m_tickTimer, &QTimer::timeout, this, &CatApp::tick);
@@ -57,6 +63,11 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     connect(&m_tray, &TrayController::scaleChanged, this, [this](int newScale) {
         setScale(newScale);
         QSettings().setValue(Config::kSettingsScaleKey, m_scale);
+    });
+
+    connect(&m_tray, &TrayController::soundChanged, this, [this](bool enabled) {
+        m_voice.setEnabled(enabled);
+        QSettings().setValue(Config::kSettingsSoundKey, enabled);
     });
 
     // 두뇌 → 트레이 / 오버레이
@@ -156,6 +167,7 @@ void CatApp::start()
     m_mouse.start();
     m_tickTimer.start();
     m_followTimer.start();
+    m_voice.start();
 }
 
 void CatApp::onSnapshot(const DesktopSnapshot &snapshot)

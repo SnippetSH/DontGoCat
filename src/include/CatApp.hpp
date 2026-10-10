@@ -3,6 +3,7 @@
 #include "CatBrain.hpp"
 #include "CatOverlay.hpp"
 #include "CatSprite.hpp"
+#include "CatVoice.hpp"
 #include "Config.hpp"
 #include "DesktopScanner.hpp"
 #include "Locomotion.hpp"
@@ -33,6 +34,7 @@ public:
     CatBrain &brain() { return m_brain; }
     Locomotion &body() { return m_body; }
     TrayController &tray() { return m_tray; }
+    CatVoice &voice() { return m_voice; }
 
 private:
     void tick();
@@ -49,6 +51,7 @@ private:
     Locomotion m_body;
     PathPlanner m_planner;
     CatBrain m_brain;
+    CatVoice m_voice;
 
     QTimer m_tickTimer;
     QTimer m_followTimer;

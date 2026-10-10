@@ -29,6 +29,7 @@ public:
     void setScale(int scale);
     void updateSnapshot(const DesktopSnapshot &snapshot);   // 바닥 y, 트레이 사각형 대체값
     void setAutoStartKey(const QString &runKey) { m_autoStartKey = runKey; }   // 자동 시작 레지스트리 키 (테스트용 대체, 비면 실제 Run 키)
+    void setSoundEnabled(bool enabled) { m_soundEnabled = enabled; }   // 팝업 소리 체크박스에 표시할 현재 설정
 
     QRect trayRect() const;          // 트레이 아이콘 geometry, 비었으면 snapshot.trayRect
     int trayFloorY() const;          // 트레이가 있는 모니터의 바닥 y
@@ -49,6 +50,7 @@ signals:
     void blockReact();               // 방해 유지 판정 → 고양이 반응 (paw_swipe)
     void blockReleased();            // 방해 실패 / 팝업 닫힘 → 고양이 비켜 앉음
     void scaleChanged(int scale);
+    void soundChanged(bool enabled);   // 사용자가 팝업에서 소리를 켜거나 껐다
     void quitRequested();
 
 private:
@@ -64,6 +66,7 @@ private:
     QString m_autoStartKey;
     int m_scale = 3;
     bool m_blocking = false;
+    bool m_soundEnabled = true;
     bool m_near = false;
     qint64 m_popupClosedMs = -1;     // 팝업이 마지막으로 닫힌 시각 (m_clock 기준)
     mutable QRect m_trayRectCache;

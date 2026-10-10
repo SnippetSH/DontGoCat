@@ -74,10 +74,15 @@ add_library(ccat_core STATIC
     src/module/PathPlanner.cpp
     src/include/CatBrain.hpp
     src/module/CatBrain.cpp
+    src/include/CatVoice.hpp
+    src/module/CatVoice.cpp
     src/include/CatApp.hpp
     src/module/CatApp.cpp
 )
 target_link_libraries(ccat_core PUBLIC ccat_ui ccat_platform ccat_sprite)
+if(WIN32)
+    target_link_libraries(ccat_core PUBLIC winmm)   # CatVoice (PlaySound)
+endif()
 
 # ── 실행 파일 ─────────────────────────────────────────────────
 # ccat        : 데스크탑 상주 앱 (콘솔 창 없음). 산출물 파일명은 DontGoCat.exe (타깃 이름은 내부용 ccat 유지)

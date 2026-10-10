@@ -29,6 +29,9 @@ ccat_add_test(test_motion test_motion.cpp LIBS ccat_core)
 # CatBrain 행동 (자율 soak, 트레이 접근, 종료 방해, 마우스 장난, 숨김/낙하, 재계획)
 ccat_add_test(test_brain test_brain.cpp LIBS ccat_core)
 
+# CatVoice 울음 판정 (간격 / 확률 / 끄기 / 자는 중). 실제 소리는 내지 않는다
+ccat_add_test(test_voice test_voice.cpp LIBS ccat_core)
+
 # QuitPopup 크기 / 배치 (배율별)
 ccat_add_test(test_popup test_popup.cpp GUI LIBS ccat_ui)
 

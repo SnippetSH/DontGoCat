@@ -33,7 +33,7 @@ const char *kStyleSheet =
     "                    border-radius: 0; padding: 0; }"
     "QPushButton#scale:hover { background: #FDE3B4; }"
     "QPushButton#scale:checked { background: #F9BD61; font-weight: bold; }"
-    "QCheckBox#autostart { color: #311410; spacing: 6px; }"
+    "QCheckBox#autostart, QCheckBox#sound { color: #311410; spacing: 6px; }"
     "QPushButton#quit { background: #D9534F; color: #FFFFFF; border: none; border-radius: 0;"
     "                   padding: 0; font-weight: bold; }"
     "QPushButton#quit:hover { background: #E26A5A; }"
@@ -96,6 +96,14 @@ QuitPopup::QuitPopup(QWidget *parent)
     root->addWidget(m_autoStart);
     connect(m_autoStart, &QCheckBox::clicked, this, &QuitPopup::autoStartToggled);
 
+    // 소리 체크박스 (표시 전에 TrayController 가 현재 설정으로 맞춘다)
+    m_sound = new QCheckBox(QString::fromUtf8("고양이 소리"), this);
+    m_sound->setObjectName(QStringLiteral("sound"));
+    m_sound->setFocusPolicy(Qt::NoFocus);
+    m_sound->setChecked(true);
+    root->addWidget(m_sound);
+    connect(m_sound, &QCheckBox::clicked, this, &QuitPopup::soundToggled);
+
     // 하단: 종료 버튼 (Config 고정 크기, 배율과 무관)
     m_quitButton = new QPushButton(QStringLiteral("종료"), this);
     m_quitButton->setObjectName(QStringLiteral("quit"));
@@ -125,6 +133,16 @@ void QuitPopup::setAutoStartChecked(bool checked)
 bool QuitPopup::autoStartChecked() const
 {
     return m_autoStart->isChecked();
+}
+
+void QuitPopup::setSoundChecked(bool checked)
+{
+    m_sound->setChecked(checked);
+}
+
+bool QuitPopup::soundChecked() const
+{
+    return m_sound->isChecked();
 }
 
 QIcon QuitPopup::faceIcon()

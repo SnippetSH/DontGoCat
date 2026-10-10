@@ -37,6 +37,10 @@ TrayController::TrayController(QObject *parent, QuitGuard::Rng rng)
         if (!AutoStart::setEnabled(enabled, m_autoStartKey))
             m_popup->setAutoStartChecked(!enabled);
     });
+    connect(m_popup, &QuitPopup::soundToggled, this, [this](bool enabled) {
+        m_soundEnabled = enabled;
+        emit soundChanged(enabled);
+    });
     connect(m_popup, &QuitPopup::closed, this, [this]() {
         m_popupClosedMs = m_clock.elapsed();
         if (m_blocking) {
@@ -195,6 +199,7 @@ void TrayController::togglePopup()
     }
 
     m_popup->setAutoStartChecked(AutoStart::isEnabled(m_autoStartKey));   // 체크 상태 = 레지스트리 값 존재 여부
+    m_popup->setSoundChecked(m_soundEnabled);
     m_popup->setScale(m_scale);
     m_popup->showAt(tray, trayFloorY(), monitor);
 }

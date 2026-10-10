@@ -8,4 +8,11 @@
         <file alias="tray_face_48.png">../assets/tray_face_48.png</file>
         <file alias="tray_face_64.png">../assets/tray_face_64.png</file>
     </qresource>
+    <!-- 고양이 울음소리 (CatVoice). 16-bit PCM, py_codes/convert_meow.py 로 meow-sound/ 에서 변환 -->
+    <qresource prefix="/sounds">
+        <file alias="meow1.wav">../assets/sounds/meow1.wav</file>
+        <file alias="meow2.wav">../assets/sounds/meow2.wav</file>
+        <file alias="meow3.wav">../assets/sounds/meow3.wav</file>
+        <file alias="meow4.wav">../assets/sounds/meow4.wav</file>
+    </qresource>
 </RCC>
