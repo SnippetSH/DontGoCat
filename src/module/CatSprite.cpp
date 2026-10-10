@@ -149,17 +149,18 @@ const PartMap kBodySprawl = {-3, 11, {
 }};
 
 // 낮춘 사냥 자세 몸통: 가슴은 낮고 엉덩이가 높이 올라감
-const PartMap kBodyCrouch = {10, 8, {
-    ".........sssf..",
-    ".......ssfsfsf.",
-    ".....ssfsfsffsf",
-    "...sfsffffsfsff",
-    "fsfffffsffosfff",
-    "ffsffffffofffff",
-    "fffsfffffosffsf",
-    "ffffsfffoffsfff",
-    "ffsfffsfofffsff",
-    "ccfsffccofsffff",
+// 맨 왼쪽 열은 목: 몸통이 머리에서 1px 떨어지는 프레임(bx=0)에서 빈틈이 외곽선으로 채워져 목이 잘려 보이는 것을 막음 (다른 프레임에선 머리에 가려짐)
+const PartMap kBodyCrouch = {9, 8, {
+    "..........sssf..",
+    "........ssfsfsf.",
+    "......ssfsfsffsf",
+    "....sfsffffsfsff",
+    ".fsfffffsffosfff",
+    "fffsffffffofffff",
+    "ffffsfffffosffsf",
+    "fffffsfffoffsfff",
+    ".ffsfffsfofffsff",
+    ".ccfsffccofsffff",
 }};
 
 // 등을 대고 누운 몸통 (배 cream이 위)
