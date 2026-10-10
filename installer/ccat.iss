@@ -1,9 +1,9 @@
 ; DontGoCat installer (Inno Setup 6). Build with scripts\package.cmd (it passes /DAppVersion=<project version>).
-; Manual build: ISCC /DAppVersion=1.0.0 installer\ccat.iss   (dist\DontGoCat\ must exist, see scripts\package.cmd)
+; Manual build: ISCC /DAppVersion=1.0.1 installer\ccat.iss   (dist\DontGoCat\ must exist, see scripts\package.cmd)
 ; Keep this file ASCII-only (Inno reads non-BOM files as ANSI); Korean UI text comes from Korean.isl.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 #define AppName "DontGoCat"
 #define AppExeName "DontGoCat.exe"
