@@ -11,10 +11,10 @@ inline constexpr const wchar_t *kValueName = L"DontGoCat";
 
 QString defaultRunKey();                                    // Software\Microsoft\Windows\CurrentVersion\Run
 
-bool isEnabled(const QString &runKey = {});                 // 값이 있으면 true (경로 일치 여부는 보지 않는다)
-bool setEnabled(bool enabled, const QString &runKey = {});  // 성공 시 true. 끄기는 값이 이미 없어도 성공
-void refreshPath(const QString &runKey = {});               // 값이 있는데 현재 exe 경로와 다르면 현재 경로로 갱신
-QString registeredCommand(const QString &runKey = {});      // 등록된 값 데이터 (없으면 빈 문자열)
+bool isEnabled(const QString &runKey = QString());                 // 값이 있으면 true (경로 일치 여부는 보지 않는다)
+bool setEnabled(bool enabled, const QString &runKey = QString());  // 성공 시 true. 끄기는 값이 이미 없어도 성공
+void refreshPath(const QString &runKey = QString());               // 값이 있는데 현재 exe 경로와 다르면 현재 경로로 갱신
+QString registeredCommand(const QString &runKey = QString());      // 등록된 값 데이터 (없으면 빈 문자열)
 QString currentCommand();                                   // 현재 exe 의 따옴표 친 네이티브 절대 경로
 
 } // namespace AutoStart
