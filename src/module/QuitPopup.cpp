@@ -42,6 +42,7 @@ constexpr int kStatRowGapPx = 2;
 
 const char *kStyleSheet =
     "QLabel#title { color: #311410; font-weight: bold; }"
+    "QLabel#version { color: #A89A90; font-size: 8pt; }"
     "QPushButton#scale { background: #FDF5E3; color: #311410; border: 1px solid #311410;"
     "                    border-radius: 0; padding: 0; }"
     "QPushButton#scale:hover { background: #FDE3B4; }"
@@ -94,7 +95,7 @@ QuitPopup::QuitPopup(QWidget *parent)
     m_statsRefresh->setInterval(Config::kStatsRefreshMs);
     connect(m_statsRefresh, &QTimer::timeout, this, &QuitPopup::refreshStats);
 
-    // 상단: 얼굴 아이콘 + "DontGoCat"
+    // 상단: 얼굴 아이콘 + "DontGoCat" + "v<버전>" (CCAT_VERSION 은 CMake project(VERSION) 에서 주입)
     auto *header = new QHBoxLayout;
     header->setSpacing(kGapPx);
     auto *icon = new QLabel(this);
@@ -102,8 +103,11 @@ QuitPopup::QuitPopup(QWidget *parent)
     icon->setFixedSize(kIconPx, kIconPx);
     auto *title = new QLabel(QStringLiteral("DontGoCat"), this);
     title->setObjectName(QStringLiteral("title"));
+    auto *version = new QLabel(QStringLiteral("v" CCAT_VERSION), this);
+    version->setObjectName(QStringLiteral("version"));
     header->addWidget(icon);
     header->addWidget(title);
+    header->addWidget(version);
     header->addStretch();
     root->addLayout(header);
 

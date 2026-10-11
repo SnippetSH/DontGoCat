@@ -65,6 +65,7 @@ add_library(ccat_ui STATIC
     src/module/TrayController.cpp
 )
 target_link_libraries(ccat_ui PUBLIC ccat_platform Qt6::Widgets)
+target_compile_definitions(ccat_ui PRIVATE CCAT_VERSION="${PROJECT_VERSION}")   # QuitPopup 버전 표시
 if(WIN32)
     target_link_libraries(ccat_ui PUBLIC advapi32)   # AutoStart (레지스트리)
 endif()
