@@ -7,6 +7,7 @@
 #include <QPoint>
 #include <QRect>
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -29,12 +30,20 @@ class CatBrain : public QObject
 public:
     enum class State { Hidden, Grabbed, Falling, QuitBlock, TrayApproach, MousePlay, Autonomous };
 
+    // 통계용 현재 활동 (README 5.14). 덮어씌우는 상태(Hidden/Grabbed/Falling)와 QuitBlock/TrayApproach 는 Other
+    //   Sleeping: Autonomous 이고 sleep 루프 중 (앉는 준비 동작은 Roaming)
+    //   Roaming : 그 밖의 Autonomous
+    //   Playing : MousePlay (접근 포함 전체)
+    enum class Activity { Other, Roaming, Sleeping, Playing };
+
     CatBrain(Locomotion &body, PathPlanner &planner, MouseWatcher &mouse, QObject *parent = nullptr);
 
     void setScale(int scale);
 
     // 테스트용 이음새: 행동 선택에 쓰는 난수 발생기를 바꾼다 (소유권 없음, nullptr 이면 QRandomGenerator::global()).
     void setRandomGenerator(QRandomGenerator *rng) { m_rng = rng; }
+    // 테스트용 이음새: 수면 기상 판정의 난수(0..99, 확률보다 작으면 기상)만 대신 공급한다. 비어 있으면 rng() 를 쓴다.
+    void setWakeRoll(std::function<int()> roll) { m_wakeRoll = std::move(roll); }
     void onSnapshot(const DesktopSnapshot &snapshot);
     void tick(qint64 nowMs);
 
@@ -43,6 +52,7 @@ public:
 
     // 현재 유효한 상태 (Hidden / Falling 이 의도보다 우선)
     State state() const;
+    Activity activity() const;   // tick 직후 CatApp 이 읽어 통계 시간을 쌓는다
 
     // 잡기 (README 5.9, 5.13). grab 은 Hidden 이거나 의도가 QuitBlock 이면 거절(false)
     bool grab(QPoint gripDesktop);
@@ -61,6 +71,7 @@ signals:
     void wantClickThrough(bool on);     // QuitBlock 으로 버튼을 덮는 동안 false
     void visibilityChanged(bool visible);
     void blockAbandoned();              // 도달 불가 등으로 방해를 포기 → TrayController 가 방해를 해제해야 한다
+    void nudged();                      // 툭툭: nudge 로 커서가 실제로 움직였다 (MouseWatcher::nudge 성공 시에만, 통계)
 
 private:
     enum class RouteStatus { None, Running, Arrived, Failed };
@@ -185,4 +196,13 @@ private:
     AutoAct m_act = AutoAct::None;
     qint64 m_actEndMs = 0;
     bool m_sleeping = false;         // Sleep: sit 이 끝나고 sleep 루프에 들어갔는가
+
+    // 수면 (README 5.9.1)
+    bool updateSleep();              // sleep 루프 중 기상 판정. true = 깼다 (act 종료)
+    void noteSleepEnded();           // 수면이 어떤 이유로든 끝났다 → 재취침 금지 시작 (sleep 루프 중이었을 때만)
+    bool sleepAllowed() const;       // 재취침 금지 시간이 지났는가
+    qint64 m_sleepStartMs = 0;       // sleep 루프 시작 시각
+    int m_wakeChecks = 0;            // 지금까지 한 기상 판정 횟수
+    qint64 m_sleepCooldownUntilMs = -1;   // 이 시각 전에는 Sleep 을 고르지 않는다 (-1: 제한 없음)
+    std::function<int()> m_wakeRoll;   // 테스트 주입 (비어 있으면 rng())
 };

@@ -7,14 +7,89 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
+#include <QWidget>
 
 #include <algorithm>
+
+#ifdef Q_OS_WIN
+#  include <windows.h>
+#endif
 
 namespace {
 
 constexpr int kSpawnSearchStepPx = 64;   // 주 모니터 중앙에서 좌우로 바닥이 뚫린 지점을 찾는 간격
 
 } // namespace
+
+NativeMsgAction nativeMsgAction(unsigned message, quint64 wParam)
+{
+    constexpr unsigned kWmClose = 0x0010;
+    constexpr unsigned kWmQueryEndSession = 0x0011;
+    constexpr unsigned kWmEndSession = 0x0016;
+    constexpr unsigned kWmSysCommand = 0x0112;
+    constexpr quint64 kScClose = 0xF060;
+    constexpr quint64 kScMask = 0xFFF0;   // 하위 4비트는 시스템이 쓴다
+    switch (message) {
+    case kWmSysCommand: return (wParam & kScMask) == kScClose ? NativeMsgAction::HideSwallow : NativeMsgAction::None;
+    case kWmClose: return NativeMsgAction::QuitSwallow;
+    case kWmQueryEndSession: return NativeMsgAction::SaveOnly;
+    case kWmEndSession: return wParam != 0 ? NativeMsgAction::SaveAndQuit : NativeMsgAction::None;
+    default: return NativeMsgAction::None;
+    }
+}
+
+// 정상 종료 요청(taskkill /IM, /F 없음) / 세션 종료를 받아 통계를 저장하고 종료한다 (README 5.14).
+// 이 프로세스의 창 메시지만 들어오므로 대상 창을 따로 거르지 않는다.
+class CatApp::NativeFilter : public QAbstractNativeEventFilter
+{
+public:
+    explicit NativeFilter(CatApp &app) : m_app(app) {}
+
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
+    {
+#ifdef Q_OS_WIN
+        if (eventType != "windows_generic_MSG" && eventType != "windows_dispatcher_MSG")
+            return false;
+        const MSG *msg = static_cast<const MSG *>(message);
+        // 디스패처 메시지(스레드 메시지)는 창이 없다: 창 메시지만 본다
+        if (!msg || !msg->hwnd)
+            return false;
+        switch (nativeMsgAction(msg->message, static_cast<quint64>(msg->wParam))) {
+        case NativeMsgAction::QuitSwallow:
+            *result = 0;
+            QCoreApplication::quit();
+            return true;
+        case NativeMsgAction::HideSwallow:   // Alt+F4 는 종료가 아니라 기존처럼 그 창만 숨긴다 (고양이의 종료 방해, R4)
+            if (QWidget *w = QWidget::find(reinterpret_cast<WId>(msg->hwnd)))
+                w->hide();
+            *result = 0;
+            return true;
+        case NativeMsgAction::SaveOnly:
+            m_app.saveStats();
+            return false;
+        case NativeMsgAction::SaveAndQuit:
+            m_app.saveStats();
+            QCoreApplication::quit();
+            return false;
+        case NativeMsgAction::None: break;
+        }
+#else
+        Q_UNUSED(eventType)
+        Q_UNUSED(message)
+        Q_UNUSED(result)
+#endif
+        return false;
+    }
+
+private:
+    CatApp &m_app;
+};
+
+CatApp::~CatApp()
+{
+    if (m_nativeFilter)
+        qApp->removeNativeEventFilter(m_nativeFilter.get());
+}
 
 CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     : QObject(parent)
@@ -56,8 +131,8 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     connect(&m_mouse, &MouseWatcher::becameIdle, &m_brain, &CatBrain::onMouseIdle);
 
     // 트레이 → 두뇌
-    connect(&m_tray, &TrayController::trayApproach, this, [this](bool near) {
-        m_brain.onTrayApproach(near, trayFloorPoint());
+    connect(&m_tray, &TrayController::trayApproach, this, [this](bool isNear) {
+        m_brain.onTrayApproach(isNear, trayFloorPoint());
     });
     connect(&m_tray, &TrayController::blockRequested, &m_brain, &CatBrain::onBlockRequested);
     connect(&m_tray, &TrayController::blockReact, &m_brain, &CatBrain::onBlockReact);
@@ -98,6 +173,29 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
         }
     });
 
+    // 통계 (README 5.14): 누적 복원 → since 가 새로 정해졌을 수 있어 바로 저장
+    {
+        QSettings settings;
+        m_stats.load(settings);
+    }
+    saveStats();
+    m_tray.setStats(&m_stats);
+    connect(&m_brain, &CatBrain::nudged, this, [this] { m_stats.addNudge(); });
+    connect(&m_tray, &TrayController::quitAttempted, this, [this](bool blocked) { m_stats.addQuitAttempt(blocked); });
+    m_body.onMotion = [this](Locomotion::MotionEvent e) {   // onFrame 은 CatBrain 이 쓰므로 건드리지 않는다
+        if (e == Locomotion::MotionEvent::Jump)
+            m_stats.addJump();
+        else
+            m_stats.addFall();
+    };
+    m_statsSaveTimer.setInterval(Config::kStatsSaveIntervalMs);
+    connect(&m_statsSaveTimer, &QTimer::timeout, this, &CatApp::saveStats);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &CatApp::saveStats);
+
+    // 정상 종료 요청(WM_CLOSE) / 세션 종료 (README 5.14)
+    m_nativeFilter = std::make_unique<NativeFilter>(*this);
+    qApp->installNativeEventFilter(m_nativeFilter.get());
+
     // 오버레이 → Shift 잡기 / 트레이 (버튼을 덮은 고양이 클릭)
     connect(&m_overlay, &CatOverlay::clicked, this, &CatApp::onCatPressed);
     connect(&m_overlay, &CatOverlay::released, this, [this] {
@@ -114,6 +212,7 @@ void CatApp::onCatPressed(Qt::KeyboardModifiers modifiers)
     if ((modifiers & Qt::ShiftModifier) && !m_tray.isBlocking()) {
         if (m_brain.grab(QCursor::pos())) {
             m_grabbing = true;
+            m_stats.addGrab();
             m_voice.grabCry();   // 잡히는 순간에만 (README 5.12)
         }
         return;
@@ -222,6 +321,9 @@ void CatApp::start()
     m_mouse.start();
     m_tickTimer.start();
     m_followTimer.start();
+
+    m_lastTravelledPx = m_body.travelledPx();   // spawn 이후 값부터 차이를 센다
+    m_statsSaveTimer.start();
 }
 
 void CatApp::onSnapshot(const DesktopSnapshot &snapshot)
@@ -244,6 +346,7 @@ void CatApp::tick()
     m_body.tick(dt);
     m_brain.setPopupRect(m_tray.popupRect());
     m_brain.tick(now);                // 이동이 끝난 직후 같은 tick 에 다음 step 을 이어 주므로 frame() 전에 호출
+    updateStats(dt);
     updateClickThrough();
     if (m_visible)
         render();
@@ -278,4 +381,37 @@ void CatApp::render()
         m_overlay.setFrame(m_image, f.anchor, f.gravity);
         m_lastAnchor = f.anchor;
     }
+}
+
+// ── 통계 (README 5.14) ───────────────────────────────────
+void CatApp::saveStats()
+{
+    QSettings settings;
+    m_stats.save(settings);
+    settings.sync();
+}
+
+void CatApp::updateStats(qint64 dtMs)
+{
+    m_stats.addRunMs(dtMs);
+    switch (m_brain.activity()) {
+    case CatBrain::Activity::Roaming: m_stats.addRoamMs(dtMs); break;
+    case CatBrain::Activity::Sleeping: m_stats.addSleepMs(dtMs); break;
+    case CatBrain::Activity::Playing: m_stats.addPlayMs(dtMs); break;
+    case CatBrain::Activity::Other: break;
+    }
+    const double travelled = m_body.travelledPx();
+    const double d = travelled - m_lastTravelledPx;
+    if (d > 0.0)
+        m_stats.addDistanceM(pxToMeters(d, m_body.anchor()));
+    m_lastTravelledPx = travelled;
+}
+
+double CatApp::pxToMeters(double px, QPoint at) const
+{
+    const QScreen *screen = QGuiApplication::screenAt(at);
+    double dpi = screen ? screen->physicalDotsPerInch() : 0.0;
+    if (dpi <= 0.0)
+        dpi = Config::kFallbackDpi;
+    return px / dpi * 0.0254;
 }

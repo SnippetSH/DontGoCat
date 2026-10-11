@@ -9,6 +9,7 @@
 #include <QString>
 #include <QSystemTrayIcon>
 
+class CatStats;
 class QuitPopup;
 
 // 트레이 아이콘 + QuitPopup + QuitGuard 를 묶어 종료 방해 흐름을 관리 (README 5.6).
@@ -31,6 +32,7 @@ public:
     void setAutoStartKey(const QString &runKey) { m_autoStartKey = runKey; }   // 자동 시작 레지스트리 키 (테스트용 대체, 비면 실제 Run 키)
     void setSoundEnabled(bool enabled) { m_soundEnabled = enabled; }   // 팝업 소리 체크박스에 표시할 현재 설정
     void setVolume(int percent) { m_volume = percent; }                // 팝업 음량 슬라이더에 표시할 현재 설정
+    void setStats(const CatStats *stats);   // 팝업 통계 영역의 데이터 원본 (소유권 없음, QuitPopup::setStatsSource 로 전달)
 
     QRect trayRect() const;          // 트레이 아이콘 geometry, 비었으면 snapshot.trayRect
     int trayFloorY() const;          // 트레이가 있는 모니터의 바닥 y
@@ -54,6 +56,7 @@ signals:
     void soundChanged(bool enabled);   // 사용자가 팝업에서 소리를 켜거나 껐다
     void volumeChanged(int percent);   // 사용자가 팝업에서 음량을 바꿨다
     void quitRequested();
+    void quitAttempted(bool blocked);   // QuitGuard::attempt() 1회마다 (hover 진입 / 방해 중 고양이 클릭). 통계 전용
 
 private:
     void onQuitHovered();

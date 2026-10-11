@@ -6,6 +6,7 @@
 *.bat text eol=crlf
 # Inno Setup script
 *.iss text eol=crlf
+*.isl text eol=crlf
 
 # Binary assets
 *.png binary

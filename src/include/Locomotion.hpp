@@ -102,6 +102,16 @@ public:
     // 애니메이션 프레임이 바뀔 때마다 호출 (예: paw_swipe 타격 프레임에 커서 nudge)
     std::function<void(CatAnim anim, int frame)> onFrame;
 
+    // ── 통계 (README 5.14) ─────────────────────────
+    // Jump: jumpTo 로 이륙한 순간 1회. Fall: 점프가 아닌 낙하가 시작된 순간 1회
+    //   (walkOffEdge 로 걸어 나감, 발판 소실/세그먼트 이탈, 잡기 놓기, 점프 중 stop() 으로 자유낙하 전환은 세지 않음 = 이미 Jump).
+    //   spawn() 의 등장 낙하는 세지 않는다.
+    enum class MotionEvent { Jump, Fall };
+    std::function<void(MotionEvent)> onMotion;
+    // 면 위를 스스로 이동한 누적 거리 (물리 px). Move(walk/run/climb) 의 프레임 보폭, Dash 이동량, 모서리 전환 이동을 더한다.
+    // 공중(점프/낙하), 잡혀 끌려감, 창을 따라 움직임(onSnapshot/followOwner), 배율 변경은 더하지 않는다. 단조 증가.
+    double travelledPx() const { return m_travelledPx; }
+
     // ── PathPlanner 와 공유하는 기하/물리 ─────────────
     // 점프 포물선 (중력 kGravityPxPerS2 × scale / 3). 꼭짓점이 더 높은 끝점보다 조금 위가 되도록 비행 시간을 정한다
     static JumpArc planJump(QPointF from, QPointF to, int scale);
@@ -187,4 +197,7 @@ private:
     CornerLink m_corner;
     bool m_cornerToFloor = false; // 벽 → 바닥 방향이면 true
     int m_cornerPhase = 0;
+
+    // 통계
+    double m_travelledPx = 0.0;
 };

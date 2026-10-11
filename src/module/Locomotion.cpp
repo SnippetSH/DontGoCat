@@ -184,6 +184,8 @@ void Locomotion::onSnapshot(const DesktopSnapshot &snapshot)
         return;
     }
     beginFall(QPointF(m_lastAnchor), QPointF());
+    if (onMotion)
+        onMotion(MotionEvent::Fall);   // 발판 소실 낙하
 }
 
 void Locomotion::followOwner(const QRect &liveOwnerRect)
@@ -430,6 +432,7 @@ void Locomotion::stepMove()
         const int step = animInfo(m_anim).speedPxPerFrame * m_scale;
         const int mv = std::min(step, std::abs(rem));
         setAlong(*seg, cur + signOf(rem) * mv);
+        m_travelledPx += mv;
         m_facing = facingForDirection(seg->id.kind, signOf(rem));
     }
 
@@ -441,6 +444,8 @@ void Locomotion::stepMove()
         const double vx = seg->id.kind == SurfaceKind::Floor ? (m_walkOffPositive ? 1.0 : -1.0)
                                                               * pxPerSecond(CatAnim::Walk, m_scale) : 0.0;
         beginFall(QPointF(m_lastAnchor), QPointF(vx, 0.0));
+        if (onMotion)
+            onMotion(MotionEvent::Fall);   // 가장자리 이탈 낙하
     } else {
         finishToIdle();
     }
@@ -489,12 +494,14 @@ void Locomotion::tickDash(double dtSec)
     const double step = double(Config::kDashSpeedSpritePxPerS) * m_scale * dtSec;
 
     if (std::abs(rem) <= std::max(step, kDashArriveEpsPx)) {
+        m_travelledPx += std::abs(target - m_dashPos);
         m_dashPos = target;
         setAlong(*seg, origin + int(std::lround(m_dashPos)));
         finishToIdle();
         return;
     }
     m_dashPos += (rem < 0 ? -step : step);
+    m_travelledPx += step;
     setAlong(*seg, std::clamp(origin + int(std::lround(m_dashPos)), seg->a, seg->b - 1));
     if (std::abs(rem) > Config::kDashFacingDeadbandSpritePx * m_scale)
         m_facing = facingForDirection(SurfaceKind::Floor, rem < 0 ? -1 : 1);
@@ -621,6 +628,8 @@ void Locomotion::jumpTo(const SurfacePoint &target)
     if (to->x() != m_lastAnchor.x())
         m_facing = to->x() < m_lastAnchor.x() ? CatFacing::Left : CatFacing::Right;
     startAnim(CatAnim::JumpUp);
+    if (onMotion)
+        onMotion(MotionEvent::Jump);
 }
 
 void Locomotion::retargetJump()
@@ -815,6 +824,8 @@ void Locomotion::release()
     if (m_mode != Mode::Held)
         return;
     beginFall(QPointF(anchor()), QPointF());   // 던지기 없음: 초속도 0
+    if (onMotion)
+        onMotion(MotionEvent::Fall);
 }
 
 void Locomotion::stop()

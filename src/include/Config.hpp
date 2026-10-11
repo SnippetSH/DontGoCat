@@ -122,8 +122,14 @@ inline constexpr int kIdleMinMs = 2000;
 inline constexpr int kIdleMaxMs = 6000;
 inline constexpr int kSitMinMs = 4000;
 inline constexpr int kSitMaxMs = 12000;
-inline constexpr int kSleepMinMs = 20000;
-inline constexpr int kSleepMaxMs = 60000;
+// 수면 (README 5.9.1): 잠든 시점 = sleep 루프 시작. 보장 수면 뒤 판정 간격마다 기상 확률이 오르고 한도에서 강제 기상
+inline constexpr int kSleepGuaranteedMs = 10000;      // 이 시간 동안은 100% 수면 (첫 기상 판정 시점)
+inline constexpr int kSleepWakeCheckMs = 2500;        // 기상 판정 간격
+inline constexpr int kSleepWakeChanceStart = 10;      // %, 첫 판정 확률
+inline constexpr int kSleepWakeChanceStep = 10;       // %p, 판정마다 증가
+inline constexpr int kSleepWakeChanceMax = 90;        // %, 확률 상한
+inline constexpr int kSleepMaxMs = 42000;             // 이 시간이 지나면 판정 없이 바로 기상
+inline constexpr int kSleepCooldownMs = 180000;       // 깬 뒤(이유 무관) 이 시간 동안 Sleep 을 고르지 않는다
 inline constexpr int kSprawlMinMs = 6000;
 inline constexpr int kSprawlMaxMs = 15000;
 inline constexpr int kWanderMinSpritePx = 16;         // 현재 면 위 배회 거리 범위
@@ -134,5 +140,11 @@ inline constexpr int kExploreRunMinSpritePx = 150;    // 탐험 목표가 이보
 inline constexpr int kMeowSoundCount = 4;             // 리소스 :/sounds/meow1.wav ~ meowN.wav
 inline constexpr int kGrabSoundCount = 1;             // 잡히는 순간 소리, 리소스 :/sounds/grab1.wav ~ grabN.wav
 inline constexpr int kMeowVolume = 20;               // %, 0~100. 원본 wav 대비 소리 크기의 기본값 (저장된 값이 없을 때. 이후는 트레이 팝업 슬라이더)
+
+// ── 통계 (CatStats, README 5.14) ────────────────────
+inline constexpr const char *kSettingsStatsGroup = "stats";   // QSettings 그룹. 키는 CatStats.cpp 참고
+inline constexpr int kStatsSaveIntervalMs = 60000;    // 누적 통계 주기 저장 (종료 시에도 저장)
+inline constexpr int kStatsRefreshMs = 1000;          // 팝업 통계 영역이 펼쳐져 있는 동안 표시 갱신 주기
+inline constexpr double kFallbackDpi = 96.0;          // 모니터 물리 DPI 를 모를 때 이동 거리 환산에 쓰는 값
 
 } // namespace Config

@@ -3,6 +3,7 @@
 #include "TestCheck.hpp"
 #include "TestSnapshot.hpp"
 
+#include "CatApp.hpp"
 #include "CatBrain.hpp"
 #include "CatSprite.hpp"
 #include "Config.hpp"
@@ -68,6 +69,8 @@ struct Sim
     int nudgeCalls = 0;        // 가짜 nudge 훅 호출 수 (실제 커서는 움직이지 않는다)
     QPoint nudgeSum;           // 누적 이동량
     int badNudge = 0;          // 한 번에 kNudgeMinPx..kNudgeMaxPx 한 축이 아닌 호출
+    bool nudgeOk = true;       // 가짜 nudge 훅의 성공 여부 (false 면 커서가 안 움직인 것)
+    int nudgedSignals = 0;     // CatBrain::nudged 수신 횟수
     QRandomGenerator rng{g_seed};   // 시드 고정 난수 (global() 은 건드리지 않는다)
 
     explicit Sim(const DesktopSnapshot &s) : snap(s)
@@ -79,7 +82,7 @@ struct Sim
             const int mag = std::abs(dx) + std::abs(dy);
             if ((dx != 0 && dy != 0) || mag < Config::kNudgeMinPx || mag > Config::kNudgeMaxPx)
                 ++badNudge;
-            return true;
+            return nudgeOk;
         });
         body.setScale(3);
         planner.setScale(3);
@@ -87,6 +90,7 @@ struct Sim
         QObject::connect(&brain, &CatBrain::wantClickThrough, [this](bool on) { ctLog.push_back(on); });
         QObject::connect(&brain, &CatBrain::visibilityChanged, [this](bool v) { visLog.push_back(v); });
         QObject::connect(&brain, &CatBrain::blockAbandoned, [this]() { ++abandoned; });
+        QObject::connect(&brain, &CatBrain::nudged, [this]() { ++nudgedSignals; });
         body.onSnapshot(snap);
         brain.onSnapshot(snap);
     }
@@ -459,6 +463,7 @@ static void testMousePlay()
     sim.brain.onMouseIdle(cur);
     // 자율 행동(탐험 경로 등)이 진행 중이면 끝난 뒤에 평가하므로 충분히 기다린다
     CHECK(sim.until([&] { return sim.brain.state() == CatBrain::State::MousePlay; }, 60000), "play started (%s)", stName(sim.brain.state()));
+    CHECK(sim.brain.activity() == CatBrain::Activity::Playing, "activity Playing during mouse play");
     sim.animsSeen.clear();
     // 서는 자리 = 커서에서 kPlayStandOffsetSpritePx 만큼 떨어진, 시작할 때 고양이가 있던 쪽 (커서와 같거나 왼쪽이면 왼쪽에 선다)
     const bool fromLeft = sim.body.anchor().x() <= cur.x();
@@ -497,6 +502,24 @@ static void testMousePlay()
     CHECK(logCount("play: poke") > 0, "pokes");
     CHECK(allPlayAnims(played), "all play anims");
     CHECK(logCount("nudge") > 0 && nudgeCalls == logCount("nudge"), "nudged (log %d hook %d)", logCount("nudge"), nudgeCalls);
+    CHECK(sim.nudgedSignals == sim.nudgeCalls, "nudged signal per successful nudge (%d vs %d)", sim.nudgedSignals, sim.nudgeCalls);
+    {
+        // nudge 가 실패(버튼 눌림 등)하면 nudged 도 나오지 않는다
+        int calls = 0, sigs = 0;
+        for (quint32 extra = 0; extra < 8 && calls == 0; ++extra) {
+            Sim f(fullSnap());
+            f.rng.seed(g_seed + extra);
+            f.nudgeOk = false;
+            f.spawnAt(QPoint(1500, kFloorY));
+            f.brain.onUserMoved(cur);
+            f.run(200);
+            f.brain.onMouseIdle(cur);
+            f.run(60000);
+            calls += f.nudgeCalls;
+            sigs += f.nudgedSignals;
+        }
+        CHECK(calls > 0 && sigs == 0, "no nudged signal when nudge fails (calls %d sigs %d)", calls, sigs);
+    }
     CHECK(badNudge == 0, "each nudge is 1..2 px on one axis");
     CHECK(driftOk, "nudge drift bounded");
     sim.brain.onUserMoved(QPoint(1200, 500));
@@ -537,6 +560,208 @@ static void testMousePlay()
 }
 
 // 5. hidden / falling
+// 5a. sleep (R12, 5.9.1)
+static void testSleep()
+{
+    std::printf("[5a] sleep\n");
+    using A = CatBrain::Activity;
+    const QPoint cur(1000, kFloorY - 40);
+    const auto chanceAt = [](int k) {
+        return (std::min)(Config::kSleepWakeChanceStart + k * Config::kSleepWakeChanceStep, Config::kSleepWakeChanceMax);
+    };
+    struct Rolls
+    {
+        std::vector<qint64> at;         // 판정이 일어난 시각 (수면 시작 기준 ms)
+        std::function<int(int)> pick;   // 판정 번호 -> 난수
+    };
+    auto setup = [&](Sim &s, Rolls &r, qint64 &start) {
+        s.brain.setWakeRoll([&s, &r, &start]() {
+            const int k = int(r.at.size());
+            r.at.push_back(s.t - start);
+            return r.pick(k);
+        });
+    };
+    // 수면 루프가 시작될 때까지 (start = 그 tick 의 시각)
+    auto toSleeping = [](Sim &s, qint64 &start) {
+        const bool ok = s.until([&] { return s.brain.activity() == A::Sleeping; }, 40 * 60 * 1000);
+        start = s.t;
+        return ok;
+    };
+    const qint64 tol = 16;
+
+    // 판정 번호 target 에서 정확히 깨는 난수 (그 전까지는 확률 경계 바로 위 = 안 깸): 시각과 확률을 함께 검증
+    for (int target = 0; target <= 12; ++target) {
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [&](int k) { return k == target ? chanceAt(k) - 1 : chanceAt(k); };
+        if (!toSleeping(s, start)) {
+            CHECK(false, "reached sleep loop (target %d)", target);
+            continue;
+        }
+        const qint64 wakeAt = 10000 + qint64(target) * 2500;
+        s.run(int(wakeAt - 100));
+        CHECK(s.brain.activity() == A::Sleeping, "still asleep before check %d", target);
+        s.until([&] { return s.brain.activity() != A::Sleeping; }, 5000);
+        const qint64 e = s.t - start;
+        CHECK(e >= wakeAt && e <= wakeAt + tol, "woke at check %d: %lld ms (expect %lld)", target, e, wakeAt);
+        CHECK(int(r.at.size()) == target + 1, "rolls = %zu (expect %d)", r.at.size(), target + 1);
+        bool timesOk = true;
+        for (size_t i = 0; i < r.at.size(); ++i)
+            timesOk = timesOk && r.at[i] >= 10000 + qint64(i) * 2500 && r.at[i] <= 10000 + qint64(i) * 2500 + tol;
+        CHECK(timesOk, "check times 10/12.5/... (target %d)", target);
+    }
+
+    // 난수가 항상 "기상" 이어도 10초 전에는 깨지 않는다. 항상 "계속 잠" 이어도 42초에 깬다
+    {
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int) { return 0; };
+        CHECK(toSleeping(s, start), "reached sleep loop");
+        s.run(Config::kSleepGuaranteedMs - 100);
+        CHECK(s.brain.activity() == A::Sleeping && r.at.empty(), "guaranteed 10 s even if every roll says wake");
+        s.until([&] { return s.brain.activity() != A::Sleeping; }, 1000);
+        CHECK(s.t - start >= 10000 && s.t - start <= 10000 + tol, "wakes at 10 s (%lld)", s.t - start);
+    }
+    {
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int) { return 99; };
+        CHECK(toSleeping(s, start), "reached sleep loop");
+        s.until([&] { return s.brain.activity() != A::Sleeping; }, 60000);
+        const qint64 e = s.t - start;
+        CHECK(e >= Config::kSleepMaxMs && e <= Config::kSleepMaxMs + tol, "forced wake at 42 s (%lld)", e);
+        CHECK(r.at.size() == 13, "13 checks before the forced wake (%zu)", r.at.size());
+    }
+
+    // 긴 tick 에서 지나간 판정을 모두 수행한다 (건너뛰지 않음)
+    {
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int k) { return k == 2 ? 0 : 99; };   // 세 번째 판정에서 기상
+        CHECK(toSleeping(s, start), "reached sleep loop");
+        s.t = start + 21000;   // 10/12.5/15/17.5/20 s 다섯 개를 한 번에 지났지만 세 번째에서 깬다
+        s.brain.tick(s.t);
+        CHECK(r.at.size() == 3, "catch-up stops at the waking check (%zu)", r.at.size());
+        CHECK(s.brain.activity() != A::Sleeping, "woke in the long tick");
+    }
+    {
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int) { return 99; };
+        CHECK(toSleeping(s, start), "reached sleep loop");
+        s.t = start + 21000;
+        s.brain.tick(s.t);
+        CHECK(r.at.size() == 5 && s.brain.activity() == A::Sleeping, "catch-up runs all 5 missed checks (%zu)", r.at.size());
+        s.t = start + 60000;
+        s.brain.tick(s.t);
+        CHECK(r.at.size() == 5, "past 42 s: forced wake without more rolls (%zu)", r.at.size());
+        CHECK(s.brain.activity() != A::Sleeping, "forced wake in a very long tick");
+    }
+
+    // 수면 중 onMouseIdle 은 깬 뒤에 평가, 깬 뒤 3분 동안 Sleep 미선택 후 다시 가능
+    {
+        g_log.clear();
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int) { return 0; };
+        CHECK(s.until([&] { return logCount("act sleep") > 0; }, 40 * 60 * 1000), "sleep chosen");
+        s.brain.onUserMoved(cur);
+        s.brain.onMouseIdle(cur);   // 수면 전 sit 중
+        CHECK(s.brain.state() == CatBrain::State::Autonomous, "no play during pre-sleep sit");
+        CHECK(toSleeping(s, start), "reached sleep loop");
+        s.run(3000);
+        s.brain.onMouseIdle(cur);
+        CHECK(s.brain.state() == CatBrain::State::Autonomous && s.brain.activity() == A::Sleeping, "idle ignored while sleeping");
+        s.run(5000);
+        CHECK(s.brain.state() == CatBrain::State::Autonomous && s.brain.activity() == A::Sleeping, "still asleep and no play at 8 s");
+        CHECK(s.until([&] { return s.brain.state() == CatBrain::State::MousePlay; }, 3000), "play evaluated right after waking");
+        CHECK(s.brain.activity() == A::Playing, "activity Playing");
+        const qint64 wokeAt = s.t;
+        const int sleeps = logCount("act sleep");
+        s.brain.onUserMoved(QPoint(1200, 500));   // 장난 중단
+        // 3분 동안은 (어떤 행동이 오가도) Sleep 이 선택되지 않는다
+        while (s.t < wokeAt + Config::kSleepCooldownMs - 100)
+            s.step();
+        CHECK(logCount("act sleep") == sleeps, "no sleep during the 3 min cooldown");
+        CHECK(s.until([&] { return logCount("act sleep") > sleeps; }, 40 * 60 * 1000), "sleep possible again after cooldown");
+        CHECK(s.t >= wokeAt + Config::kSleepCooldownMs, "...and not before 3 min");
+    }
+
+    // 사용자 입력에 의한 중단: 보장 시간 안에도 즉시 깨고 재취침 금지 시작
+    for (int kick = 0; kick < 3; ++kick) {   // 0 = 종료 방해, 1 = 트레이 접근, 2 = 잡기
+        g_log.clear();
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        Rolls r;
+        qint64 start = 0;
+        setup(s, r, start);
+        r.pick = [](int) { return 99; };
+        CHECK(toSleeping(s, start), "reached sleep loop (kick %d)", kick);
+        s.run(1000);
+        CHECK(s.brain.activity() == A::Sleeping, "asleep at 1 s");
+        const int ended = logCount("sleep ended");
+        bool ok = true;
+        if (kick == 0)
+            s.brain.onBlockRequested(QRect(1657, 1016, 96, 24));
+        else if (kick == 1)
+            s.brain.onTrayApproach(true, QPoint(1700, kFloorY));
+        else
+            ok = s.brain.grab(s.body.anchor() + QPoint(0, -20));
+        CHECK(ok, "interruption accepted (kick %d)", kick);
+        CHECK(s.brain.activity() == A::Other, "activity Other right away (kick %d)", kick);
+        CHECK(logCount("sleep ended") == ended + 1, "cooldown started (kick %d)", kick);
+        if (kick == 1) {
+            s.run(1000);
+            s.brain.onTrayApproach(false, QPoint());
+        } else if (kick == 2) {
+            s.run(500);
+            s.brain.releaseGrab();
+        } else {
+            continue;   // QuitBlock 은 풀릴 때까지 계속되므로 쿨다운 구간 검사는 생략
+        }
+        const qint64 from = s.t;
+        const int sleeps = logCount("act sleep");
+        while (s.t < from + Config::kSleepCooldownMs - 100)
+            s.step();
+        CHECK(logCount("act sleep") == sleeps, "no sleep within 3 min after interruption (kick %d)", kick);
+    }
+
+    // sit 단계에서 끊기면 재취침 금지는 시작하지 않는다
+    {
+        g_log.clear();
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        CHECK(s.until([&] { return logCount("act sleep") > 0; }, 40 * 60 * 1000), "sleep chosen");
+        CHECK(s.brain.activity() == A::Roaming, "sit before sleep counts as Roaming");
+        s.brain.onTrayApproach(true, QPoint(1700, kFloorY));
+        CHECK(logCount("sleep ended") == 0, "no cooldown when interrupted during the sit");
+    }
+
+    // 스폰 전에는 Other
+    {
+        Sim s(fullSnap());
+        CHECK(s.brain.activity() == A::Other, "Other before spawn");
+    }
+}
+
 static void testHiddenFalling()
 {
     std::printf("[5] hidden / falling\n");
@@ -673,6 +898,21 @@ static void testReplan()
     CHECK(sim.badAnchor == 0, "no bad anchors");
 }
 
+// 정상 종료 요청 / 세션 종료 메시지 판정 (README 5.14). WM_CLOSE=0x10, WM_QUERYENDSESSION=0x11, WM_ENDSESSION=0x16
+static void testNativeMsg()
+{
+    std::printf("native message actions\n");
+    CHECK(nativeMsgAction(0x0010, 0) == NativeMsgAction::QuitSwallow, "WM_CLOSE swallowed + quit");
+    CHECK(nativeMsgAction(0x0011, 0) == NativeMsgAction::SaveOnly, "WM_QUERYENDSESSION saves only");
+    CHECK(nativeMsgAction(0x0011, 1) == NativeMsgAction::SaveOnly, "WM_QUERYENDSESSION never blocks");
+    CHECK(nativeMsgAction(0x0016, 1) == NativeMsgAction::SaveAndQuit, "WM_ENDSESSION(TRUE) saves + quits");
+    CHECK(nativeMsgAction(0x0016, 0) == NativeMsgAction::None, "WM_ENDSESSION(FALSE) (cancelled) ignored");
+    CHECK(nativeMsgAction(0x0112, 0xF060) == NativeMsgAction::HideSwallow, "SC_CLOSE (Alt+F4) hides, not quits");
+    CHECK(nativeMsgAction(0x0112, 0xF063) == NativeMsgAction::HideSwallow, "SC_CLOSE with low bits set");
+    CHECK(nativeMsgAction(0x0112, 0xF020) == NativeMsgAction::None, "SC_MINIMIZE ignored");
+    CHECK(nativeMsgAction(0x0001, 1) == NativeMsgAction::None, "other messages ignored");
+}
+
 int main(int argc, char **argv)
 {
     setvbuf(stdout, nullptr, _IONBF, 0);   // 시간 초과로 죽어도 진행 로그가 남도록
@@ -689,8 +929,10 @@ int main(int argc, char **argv)
     testQuitBlock();
     testBlockApproach();
     testMousePlay();
+    testSleep();
     testHiddenFalling();
     testGrabbed();
     testReplan();
+    testNativeMsg();
     return testing::testResult("test_brain");
 }

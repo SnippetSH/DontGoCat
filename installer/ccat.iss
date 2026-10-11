@@ -8,6 +8,9 @@
 #define AppName "DontGoCat"
 #define AppExeName "DontGoCat.exe"
 #define RunKey "Software\Microsoft\Windows\CurrentVersion\Run"
+#define UserDataKey "Software\DontGoCat"
+; How long StopApp waits for a graceful exit (WM_CLOSE) before force-killing.
+#define GracefulQuitMs 3000
 
 [Setup]
 ; Stable id: never change it, otherwise updates install side by side instead of upgrading.
@@ -36,7 +39,11 @@ RestartApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl,custom_ko.isl"
+
+[CustomMessages]
+english.DeleteUserData=Also delete DontGoCat statistics and settings (scale, sound)?
+; The Korean text lives in custom_ko.isl (UTF-8 with BOM) to keep this file ASCII-only.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -52,12 +59,33 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Stop a running DontGoCat (no main window, so it cannot be asked to close). Scoped to this installer/uninstaller.
+// Stop a running DontGoCat. Scoped to this installer/uninstaller.
+// 1) graceful: taskkill without /F posts WM_CLOSE; the app saves its statistics and quits itself.
+//    Poll taskkill every 100 ms until it reports exit code 128 (process not found), for at most GracefulQuitMs.
+// 2) fallback: force kill.
 procedure StopApp();
 var
-  ResultCode: Integer;
+  ResultCode, Waited: Integer;
+  Taskkill: String;
+  Gone: Boolean;
 begin
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Taskkill := ExpandConstant('{sys}\taskkill.exe');
+  Gone := False;
+  Waited := 0;
+  while True do
+  begin
+    if Exec(Taskkill, '/IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 128) then
+    begin
+      Gone := True;
+      Break;
+    end;
+    if Waited >= {#GracefulQuitMs} then
+      Break;
+    Sleep(100);
+    Waited := Waited + 100;
+  end;
+  if not Gone then
+    Exec(Taskkill, '/F /IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(300);   // let Windows release the file locks
 end;
 
@@ -82,5 +110,10 @@ begin
     StopApp();
     // The tray popup (not the installer) creates this value, so [Registry] uninsdeletevalue cannot remove it.
     RegDeleteValue(HKEY_CURRENT_USER, '{#RunKey}', 'DontGoCat');
+    // Statistics and settings (scale, sound) live in HKCU\{#UserDataKey}. Updates keep them; ask on uninstall only.
+    // Silent uninstalls never ask and keep the data. Default button is No.
+    if not UninstallSilent then
+      if MsgBox(CustomMessage('DeleteUserData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, '{#UserDataKey}');
   end;
 end;

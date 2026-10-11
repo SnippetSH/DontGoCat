@@ -70,6 +70,53 @@ CatBrain::State CatBrain::state() const
     return m_intent;
 }
 
+CatBrain::Activity CatBrain::activity() const
+{
+    if (!spawned() || m_hidden || m_falling || m_body.mode() == Locomotion::Mode::Held)
+        return Activity::Other;
+    switch (m_intent) {
+    case State::MousePlay:
+        return Activity::Playing;
+    case State::Autonomous:
+        return (m_act == AutoAct::Sleep && m_sleeping) ? Activity::Sleeping : Activity::Roaming;
+    default:
+        return Activity::Other;   // QuitBlock / TrayApproach
+    }
+}
+
+bool CatBrain::sleepAllowed() const
+{
+    return m_sleepCooldownUntilMs < 0 || m_now >= m_sleepCooldownUntilMs;
+}
+
+void CatBrain::noteSleepEnded()
+{
+    if (!m_sleeping)
+        return;   // sit 단계에서 끊긴 경우는 잠든 적이 없다
+    m_sleeping = false;
+    m_sleepCooldownUntilMs = m_now + Config::kSleepCooldownMs;
+    qCInfo(lcBrain) << "sleep ended, no re-sleep until" << m_sleepCooldownUntilMs;
+}
+
+bool CatBrain::updateSleep()
+{
+    const qint64 elapsed = m_now - m_sleepStartMs;
+    if (elapsed >= Config::kSleepMaxMs)
+        return true;   // 판정 없이 강제 기상
+    // 긴 dt 로 지나간 판정도 차례로 모두 수행한다
+    for (;;) {
+        const qint64 checkAt = Config::kSleepGuaranteedMs + static_cast<qint64>(m_wakeChecks) * Config::kSleepWakeCheckMs;
+        if (elapsed < checkAt)
+            return false;
+        const int chance = std::min(Config::kSleepWakeChanceStart + m_wakeChecks * Config::kSleepWakeChanceStep,
+                                    Config::kSleepWakeChanceMax);
+        ++m_wakeChecks;
+        const int roll = m_wakeRoll ? m_wakeRoll() : randBetween(0, 99);
+        if (roll < chance)
+            return true;
+    }
+}
+
 void CatBrain::setScale(int scale)
 {
     if (scale == m_scale)
@@ -163,6 +210,7 @@ void CatBrain::beginIntent(State s, const char *why)
     m_pokeArmed = false;
     m_wanderLegs.clear();
     m_act = AutoAct::None;
+    noteSleepEnded();   // sleep 루프 중이었다면 재취침 금지 시작 (m_sleeping 도 내린다)
     m_sleeping = false;
 }
 
@@ -400,6 +448,7 @@ bool CatBrain::grab(QPoint gripDesktop)
     qCInfo(lcBrain) << "state" << stateName(state()) << "-> Grabbed";
     restoreClickThrough();
     abortRoute();
+    noteSleepEnded();
     m_swipePending = false;
     m_pokeArmed = false;
     m_body.hold(gripDesktop);
@@ -430,6 +479,7 @@ bool CatBrain::updateFalling()
             qCInfo(lcBrain) << "state" << stateName(m_intent) << "-> Falling";
             restoreClickThrough();
             abortRoute();
+            noteSleepEnded();
         }
         return true;
     }
@@ -490,7 +540,8 @@ void CatBrain::onMouseIdle(QPoint pos)
     m_cursor = pos;
     m_cursorKnown = true;
     m_idlePending = true;
-    if (m_intent == State::Autonomous && !m_hidden && !m_falling && spawned())
+    // 수면 중(수면 전 sit 포함)에는 장난을 시작하지 않는다 → 깬 뒤 runAutonomous 가 평가
+    if (m_intent == State::Autonomous && m_act != AutoAct::Sleep && !m_hidden && !m_falling && spawned())
         tryStartMousePlay();
     // 다른 의도가 진행 중이면 Autonomous 로 돌아왔을 때 평가한다 (runAutonomous)
 }
@@ -948,6 +999,7 @@ void CatBrain::doNudge()
         m_cursor += QPoint(dx, dy);
         m_drift += QPoint(dx, dy);
         qCDebug(lcBrain) << "nudge" << dx << dy;
+        emit nudged();
     }
 }
 
@@ -983,11 +1035,16 @@ bool CatBrain::updateAutoAct()
             if (!m_body.isBusy()) {   // sit 이 끝났다 → sleep 루프
                 m_body.play(CatAnim::Sleep);
                 m_sleeping = true;
-                m_actEndMs = m_now + randBetween(Config::kSleepMinMs, Config::kSleepMaxMs);
+                m_sleepStartMs = m_now;
+                m_wakeChecks = 0;
             }
             return false;
         }
-        return m_now >= m_actEndMs;
+        if (updateSleep()) {
+            noteSleepEnded();
+            return true;
+        }
+        return false;
     case AutoAct::PawSwipe:
     case AutoAct::Wander:
         return !m_body.isBusy();
@@ -1077,6 +1134,9 @@ void CatBrain::startNextAutoAct()
                 {AutoAct::Explore, Config::kWeightExplore},   {AutoAct::Sit, Config::kWeightSit},
                 {AutoAct::Sleep, Config::kWeightSleep},       {AutoAct::PawSwipe, Config::kWeightPawSwipe},
                 {AutoAct::Sprawl, Config::kWeightSprawl}};
+        if (!sleepAllowed())
+            opts.erase(std::remove_if(opts.begin(), opts.end(), [](const Option &o) { return o.act == AutoAct::Sleep; }),
+                       opts.end());   // 깬 뒤 일정 시간은 재취침 금지
     }
     int total = 0;
     for (const Option &o : opts)

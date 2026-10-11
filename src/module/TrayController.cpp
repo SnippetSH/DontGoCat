@@ -169,7 +169,9 @@ void TrayController::onCatClicked(Qt::KeyboardModifiers modifiers)
     if (!m_blocking)
         return;   // 방해 중이 아니면 고양이 클릭은 무시한다
     // 방해 중 고양이 몸 클릭 = 재시도: 재판정
-    if (m_guard.attempt(m_clock.elapsed())) {
+    const bool blocked = m_guard.attempt(m_clock.elapsed());
+    emit quitAttempted(blocked);
+    if (blocked) {
         emit blockReact();         // 방해 유지 → 고양이 반응
     } else {
         m_blocking = false;        // 방해 실패 → 고양이가 비켜 앉는다
@@ -213,7 +215,9 @@ void TrayController::onQuitHovered()
 {
     if (m_blocking)
         return;
-    if (m_guard.attempt(m_clock.elapsed())) {
+    const bool blocked = m_guard.attempt(m_clock.elapsed());
+    emit quitAttempted(blocked);
+    if (blocked) {
         m_blocking = true;
         emit blockRequested(quitButtonRect());
     }
@@ -223,4 +227,9 @@ void TrayController::onQuitClicked()
 {
     // 고양이가 덮지 않은(눈에 보이는) 버튼 부분을 눌렀다 → 방해 여부와 상관없이 종료 (재판정 없음)
     emit quitRequested();
+}
+
+void TrayController::setStats(const CatStats *stats)
+{
+    m_popup->setStatsSource(stats);
 }

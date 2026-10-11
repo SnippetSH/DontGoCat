@@ -13,6 +13,7 @@
 #include <QDebug>
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -586,6 +587,124 @@ static void testDash()
 }
 
 // ── 8. 기타 명령 ─────────────────────────────────────────
+// ── 통계: travelledPx / onMotion (README 5.14) ───────────
+static void testStats()
+{
+    std::printf("[stats: travelledPx / onMotion]\n");
+    const DesktopSnapshot s = fullSnap();
+    int jumps = 0, falls = 0;
+    const auto hook = [&](Locomotion &l) {
+        jumps = falls = 0;
+        l.onMotion = [&](Locomotion::MotionEvent e) { (e == Locomotion::MotionEvent::Jump ? jumps : falls)++; };
+    };
+
+    // spawn 등장 낙하 / 이미 바닥 위: 이벤트 0, 이동량 0
+    {
+        Locomotion l;
+        hook(l);
+        l.setScale(3);
+        l.spawn(s, QPoint(400, 0));
+        runUntilIdle(l);
+        CHECK(jumps == 0 && falls == 0, "spawn: no events (%d,%d)", jumps, falls);
+        CHECK(l.travelledPx() == 0.0, "spawn: travelled 0 (%f)", l.travelledPx());
+    }
+
+    // 걷기 / 달리기 / 스케일 변경
+    {
+        Locomotion l = makeOnFloor(s, 100);
+        hook(l);
+        l.moveAlong(500, false);
+        runUntilIdle(l);
+        CHECK(l.anchor().x() == 500, "walk reached");
+        CHECK(std::abs(l.travelledPx() - 400.0) < 0.01, "walk travelled 400 (%f)", l.travelledPx());
+        const double before = l.travelledPx();
+        l.moveAlong(300, true);
+        runUntilIdle(l);
+        CHECK(std::abs(l.travelledPx() - before - 200.0) < 0.01, "run travelled +200 (%f)", l.travelledPx() - before);
+        const double t = l.travelledPx();
+        l.setScale(2);
+        CHECK(l.travelledPx() == t, "scale change keeps travelled");
+        CHECK(jumps == 0 && falls == 0, "walk: no events");
+    }
+
+    // 대시
+    {
+        Locomotion l = makeOnFloor(s, 100);
+        l.dashAlong(1000);
+        runUntilIdle(l);
+        CHECK(std::abs(l.travelledPx() - 900.0) < 1.5, "dash travelled 900 (%f)", l.travelledPx());
+    }
+
+    // 창 추종: 불변 / 소실 낙하 = Fall 1회 / 낙하 중 불변
+    {
+        Locomotion l;
+        hook(l);
+        l.setScale(3);
+        l.spawn(s, QPoint(500, 300));
+        runUntilIdle(l);
+        falls = 0;
+        DesktopSnapshot moved = baseSnap();
+        addWindow(moved, hA, rA.translated(50, -30));
+        l.onSnapshot(moved);
+        CHECK(l.travelledPx() == 0.0 && falls == 0, "window follow: unchanged");
+        l.onSnapshot(baseSnap());
+        CHECK(falls == 1 && jumps == 0, "support lost: Fall x1 (%d)", falls);
+        runUntilIdle(l);
+        CHECK(l.travelledPx() == 0.0 && falls == 1, "fall: travelled 0, no extra events");
+    }
+
+    // 점프: 1회, travelled 불변. 점프 중 stop() 은 Fall 이 아님
+    {
+        Locomotion l = makeOnFloor(s, 1250);
+        hook(l);
+        const SurfaceSegment *dRoof = seg(s, hD, SurfaceKind::Floor);
+        l.jumpTo(Locomotion::pointOn(*dRoof, 1400));
+        CHECK(jumps == 1 && falls == 0, "jumpTo: Jump x1");
+        runUntilIdle(l);
+        CHECK(jumps == 1 && falls == 0 && l.travelledPx() == 0.0, "jump: no Fall, travelled 0");
+
+        l.jumpTo(Locomotion::pointOn(s.segments[0], 1300));
+        l.tick(16);
+        l.stop();
+        runUntilIdle(l);
+        CHECK(jumps == 2 && falls == 0, "stop mid-jump: no Fall (%d,%d)", jumps, falls);
+    }
+
+    // walkOffEdge: Fall 1회, 낙하분은 이동량 아님
+    {
+        const SurfaceSegment *roof = seg(s, hA, SurfaceKind::Floor);
+        Locomotion l;
+        l.setScale(3);
+        l.spawn(s, QPoint(roof->b - 100, roof->line));
+        runUntilIdle(l);
+        hook(l);
+        l.walkOffEdge(true);
+        runUntilIdle(l);
+        CHECK(falls == 1 && jumps == 0, "walkOffEdge: Fall x1 (%d)", falls);
+        CHECK(std::abs(l.travelledPx() - 99.0) < 0.01, "walkOff travelled to edge (%f)", l.travelledPx());
+    }
+
+    // 잡힘: 끌려가도 불변, 놓기 = Fall 1회
+    {
+        Locomotion l = makeOnFloor(s, 500);
+        hook(l);
+        l.hold(QPoint(700, 500));
+        l.moveHeld(QPoint(900, 300));
+        l.tick(16);
+        CHECK(l.travelledPx() == 0.0 && falls == 0, "held: unchanged");
+        l.release();
+        CHECK(falls == 1, "release: Fall x1");
+        runUntilIdle(l);
+        CHECK(falls == 1 && l.travelledPx() == 0.0, "release fall: no extra");
+
+        Locomotion m = makeOnFloor(s, 500);
+        hook(m);
+        m.hold(QPoint(700, 500));
+        m.stop();   // Held 중 stop = release
+        CHECK(falls == 1, "stop while held: Fall x1");
+    }
+}
+
 // ── 잡기 (Held, README 5.7 / 5.13) ───────────────────────
 static void testHeld()
 {
@@ -937,6 +1056,7 @@ int main(int argc, char **argv)
     testRunFrameScale();
     testDash();
     testHeld();
+    testStats();
     testMisc();
     testPlanner();
     testPerf();

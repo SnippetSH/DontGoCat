@@ -53,6 +53,8 @@ endif()
 add_library(ccat_ui STATIC
     src/include/AutoStart.hpp
     src/module/AutoStart.cpp
+    src/include/CatStats.hpp
+    src/module/CatStats.cpp
     src/include/CatOverlay.hpp
     src/module/CatOverlay.cpp
     src/include/QuitGuard.hpp

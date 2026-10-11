@@ -5,6 +5,7 @@
 #include "TestCheck.hpp"
 
 #include "CatOverlay.hpp"
+#include "CatStats.hpp"
 #include "CatSprite.hpp"
 #include "Config.hpp"
 #include "QuitPopup.hpp"
@@ -15,6 +16,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QCheckBox>
+#include <QLabel>
 #include <QPushButton>
 #include <QSlider>
 #include <QThread>
@@ -96,6 +98,8 @@ static void testClickRules()
         return;
 
     int requested = 0, react = 0, released = 0, quit = 0;
+    std::vector<bool> attempted;   // quitAttempted(blocked) 기록
+    QObject::connect(&tray, &TrayController::quitAttempted, [&](bool b) { attempted.push_back(b); });
     QObject::connect(&tray, &TrayController::blockRequested, [&](QRect) { ++requested; });
     QObject::connect(&tray, &TrayController::blockReact, [&]() { ++react; });
     QObject::connect(&tray, &TrayController::blockReleased, [&]() { ++released; });
@@ -111,6 +115,7 @@ static void testClickRules()
     roll = 0;
     emit popup->quitHovered();
     CHECK(rolls == 1 && requested == 1 && tray.isBlocking(), "hover → blockRequested (rolls=%d)", rolls);
+    CHECK(attempted.size() == 1 && attempted[0], "hover emits quitAttempted(true) (%zu)", attempted.size());
 
     // 방해 중 버튼(보이는 부분) 클릭 → 재판정 없이 종료
     emit popup->quitClicked();
@@ -118,15 +123,18 @@ static void testClickRules()
     CHECK(rolls == 1 && react == 0 && released == 0, "button click is not an attempt (rolls=%d react=%d released=%d)", rolls,
           react, released);
     CHECK(tray.isBlocking(), "block state untouched by button click");
+    CHECK(attempted.size() == 1, "button click does not emit quitAttempted (%zu)", attempted.size());
 
     // 방해 중 고양이 몸 클릭 → 시도: 유지
     tray.onCatClicked(Qt::NoModifier);
     CHECK(rolls == 2 && react == 1 && released == 0 && quit == 2, "cat click → blockReact (rolls=%d react=%d)", rolls, react);
     CHECK(tray.isBlocking(), "still blocking after react");
+    CHECK(attempted.size() == 2 && attempted[1], "cat click emits quitAttempted(true) (%zu)", attempted.size());
 
     // Shift+고양이 클릭 → 즉시 종료, 시도 아님
     tray.onCatClicked(Qt::ShiftModifier);
     CHECK(quit == 3 && rolls == 2 && react == 1, "shift+cat click quits (quit=%d rolls=%d)", quit, rolls);
+    CHECK(attempted.size() == 2, "shift+cat click does not emit quitAttempted (%zu)", attempted.size());
 
     // 방해 중 고양이 몸 클릭 → 시도: 실패 → 해제
     roll = 99;
@@ -134,6 +142,7 @@ static void testClickRules()
     CHECK(rolls == 3 && released == 1 && react == 1 && quit == 3, "cat click → blockReleased (rolls=%d released=%d)", rolls,
           released);
     CHECK(!tray.isBlocking(), "block released");
+    CHECK(attempted.size() == 3 && !attempted[2], "failed retry emits quitAttempted(false) (%zu)", attempted.size());
 
     // 해제 후: 고양이 클릭 무시, 버튼 클릭 종료 (시도 아님)
     tray.onCatClicked(Qt::NoModifier);
@@ -144,6 +153,7 @@ static void testClickRules()
     // 해제 후 Shift+고양이 클릭도 종료
     tray.onCatClicked(Qt::ShiftModifier);
     CHECK(quit == 5 && rolls == 3, "shift+cat click when idle quits (quit=%d)", quit);
+    CHECK(attempted.size() == 3, "no more quitAttempted after idle clicks (%zu)", attempted.size());
 }
 
 // 자동 시작 체크박스: 표시 시 레지스트리 상태 반영, 토글 → 등록/삭제, 실패 시 되돌림.
@@ -292,6 +302,150 @@ static void testHitsOpaque()
     CHECK(!o.hitsOpaque(topLeft + QPoint(14, 14)), "false when hidden again");
 }
 
+static QString statText(QuitPopup &p, const char *name)
+{
+    auto *l = p.findChild<QLabel *>(QString::fromLatin1(name));
+    return l ? l->text() : QStringLiteral("<missing>");
+}
+
+// 통계 토글: 접힌 채 시작, 위로 펼침(하단 유지), 폭 / 종료 버튼 사각형 불변, 값 라벨 = CatStats 값 + 형식 함수
+static void testStatsToggle()
+{
+    std::printf("[6] stats toggle\n");
+    const int floorY = 1040;
+    const QRect monitor(0, 0, 1920, 1080);
+    const QRect tray(1800, 1000, 32, 32);
+
+    CatStats stats;
+    stats.addRunMs(3 * 3600 * 1000 + 2 * 60 * 1000 + 5000);
+    stats.addRoamMs(90000);
+    stats.addSleepMs(45000);
+    stats.addPlayMs(12000);
+    for (int i = 0; i < 1234; ++i)
+        stats.addNudge();
+    for (int i = 0; i < 15; ++i)
+        stats.addQuitAttempt(i < 12);
+    stats.addGrab();
+    stats.addGrab();
+    stats.addJump();
+    stats.addFall();
+    stats.addFall();
+    stats.addDistanceM(12.34);
+
+    QuitPopup p;
+    auto *toggle = p.findChild<QPushButton *>(QStringLiteral("statsToggle"));
+    auto *panel = p.findChild<QWidget *>(QStringLiteral("statsPanel"));
+    CHECK(toggle != nullptr && panel != nullptr, "toggle and panel exist");
+    if (!toggle || !panel)
+        return;
+    CHECK(toggle->focusPolicy() == Qt::NoFocus, "toggle is NoFocus");
+
+    p.setStatsSource(&stats);
+    p.setScale(3);
+    p.showAt(tray, floorY, monitor);
+    QCoreApplication::processEvents();
+    CHECK(!p.statsExpanded() && !panel->isVisible(), "starts collapsed");
+    CHECK(toggle->text() == QString::fromUtf8("▲"), "collapsed shows up arrow");
+    const QRect r0 = p.desktopRect();
+    const QRect b0 = p.quitButtonDesktopRect();
+    CHECK(r0.bottom() + 1 == floorY, "collapsed bottom = floor");
+
+    toggle->click();
+    QCoreApplication::processEvents();
+    const QRect r1 = p.desktopRect();
+    const QRect b1 = p.quitButtonDesktopRect();
+    CHECK(p.statsExpanded() && panel->isVisible(), "click expands");
+    CHECK(toggle->text() == QString::fromUtf8("▼"), "expanded shows down arrow");
+    CHECK(r1.bottom() + 1 == floorY, "expanded bottom = floor (%d)", r1.bottom() + 1);
+    CHECK(r1.height() > r0.height(), "expanded grows (%d > %d)", r1.height(), r0.height());
+    CHECK(r1.width() == r0.width() && r1.x() == r0.x(), "width and x unchanged (%d,%d)", r1.width(), r1.x());
+    CHECK(b1 == b0, "quit button rect unchanged");
+    CHECK(r1.top() >= monitor.top(), "expanded inside monitor");
+    // 패널은 기존 내용(배율 줄/종료 버튼) 위, 토글은 패널 위
+    int scalesTop = 1 << 30;
+    for (auto *sb : p.findChildren<QPushButton *>(QStringLiteral("scale")))
+        scalesTop = qMin(scalesTop, sb->mapToGlobal(QPoint(0, 0)).y());
+    const QRect pr(panel->mapToGlobal(QPoint(0, 0)), panel->size());
+    CHECK(pr.bottom() < scalesTop, "panel above existing content (%d < %d)", pr.bottom(), scalesTop);
+    CHECK(toggle->mapToGlobal(QPoint(0, 0)).y() < pr.top(), "toggle above panel");
+    CHECK(toggle->mapToGlobal(QPoint(0, 0)).y() <= r1.top() + 2, "toggle at very top");
+
+    // 값 라벨 = 형식 함수 결과
+    using S = CatStats;
+    const CatStatsValues &t = stats.total();
+    const CatStatsValues &s = stats.session();
+    CHECK(statText(p, "stat_total_runMs") == S::formatDuration(t.runMs), "total runMs label");
+    CHECK(statText(p, "stat_total_roamMs") == S::formatDuration(t.roamMs), "total roamMs label");
+    CHECK(statText(p, "stat_total_sleepMs") == S::formatDuration(t.sleepMs), "total sleepMs label");
+    CHECK(statText(p, "stat_total_playMs") == S::formatDuration(t.playMs), "total playMs label");
+    CHECK(statText(p, "stat_total_nudges") == S::formatCount(t.nudges), "total nudges label");
+    CHECK(statText(p, "stat_total_quit") ==
+              QString::fromUtf8("%1 / %2 (%3)").arg(S::formatCount(12), S::formatCount(15), S::formatRate(12, 15)),
+          "total quit label '%s'", qUtf8Printable(statText(p, "stat_total_quit")));
+    CHECK(statText(p, "stat_total_grabs") == S::formatCount(t.grabs), "total grabs label");
+    CHECK(statText(p, "stat_total_distanceM") == S::formatDistance(t.distanceM), "total distance label");
+    CHECK(statText(p, "stat_total_jumpFall") == QString::fromUtf8("%1 / %2").arg(S::formatCount(1), S::formatCount(2)),
+          "total jumpFall label");
+    CHECK(statText(p, "stat_session_runMs") == S::formatDuration(s.runMs), "session runMs label");
+    CHECK(statText(p, "stat_session_sleepMs") == S::formatDuration(s.sleepMs), "session sleepMs label");
+    CHECK(statText(p, "stat_session_nudges") == S::formatCount(s.nudges), "session nudges label");
+    CHECK(statText(p, "stat_session_quitBlocks") == S::formatCount(12), "session quitBlocks label");
+    CHECK(statText(p, "stat_session_grabs") == S::formatCount(s.grabs), "session grabs label");
+    CHECK(statText(p, "stat_session_distanceM") == S::formatDistance(s.distanceM), "session distance label");
+    CHECK(p.findChild<QLabel *>(QStringLiteral("stat_since")) != nullptr, "since label exists");
+
+    // 펼쳐진 동안 타이머로 갱신
+    stats.addGrab();
+    QElapsedTimer clock;
+    clock.start();
+    while (clock.elapsed() < Config::kStatsRefreshMs + 600)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    CHECK(statText(p, "stat_total_grabs") == S::formatCount(3), "refresh timer updates label");
+    CHECK(p.desktopRect().width() == r0.width(), "width stable after refresh");
+
+    // 접으면 원래 크기
+    toggle->click();
+    QCoreApplication::processEvents();
+    CHECK(!p.statsExpanded() && !panel->isVisible(), "click collapses");
+    CHECK(p.desktopRect() == r0, "collapsed back to original rect");
+    CHECK(p.quitButtonDesktopRect() == b0, "quit button rect same after collapse");
+
+    // API 로 펼침 / showAt 은 항상 접힌 채 시작
+    p.setStatsExpanded(true);
+    CHECK(p.statsExpanded() && p.desktopRect().width() == r0.width(), "setStatsExpanded(true)");
+    p.hide();
+    p.showAt(tray, floorY, monitor);
+    CHECK(!p.statsExpanded() && p.desktopRect() == r0, "showAt restarts collapsed");
+
+    // 폭 고정: 표시 중에는 값이 훨씬 길어져도(토글/1초 갱신 포함) 폭, x, 종료 버튼 사각형이 그대로
+    p.setStatsExpanded(true);
+    const QRect rw = p.desktopRect();
+    const QRect bw = p.quitButtonDesktopRect();
+    for (int i = 0; i < 5; ++i)
+        stats.addRunMs(86400000LL * 4000);
+    stats.addDistanceM(123456789.0);
+    for (int i = 0; i < 100; ++i)
+        stats.addJump();
+    p.refreshStats();
+    QCoreApplication::processEvents();
+    CHECK(p.desktopRect().x() == rw.x() && p.desktopRect().width() == rw.width(), "width/x locked after long values");
+    CHECK(p.quitButtonDesktopRect() == bw, "quit button rect locked after long values");
+    p.setStatsExpanded(false);
+    p.setStatsExpanded(true);
+    CHECK(p.desktopRect().width() == rw.width() && p.quitButtonDesktopRect() == bw, "width locked across toggle");
+    p.hide();
+    p.showAt(tray, floorY, monitor);
+    CHECK(p.desktopRect().width() >= rw.width(), "showAt recomputes width (may grow)");
+
+    // 원본 없음 → "-"
+    p.setStatsSource(nullptr);
+    p.setStatsExpanded(true);
+    CHECK(statText(p, "stat_total_runMs") == QStringLiteral("-"), "null source shows dash");
+    CHECK(statText(p, "stat_session_grabs") == QStringLiteral("-"), "null source session dash");
+    CHECK(p.desktopRect().width() == r0.width(), "width same with null source");
+    p.hide();
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
@@ -302,5 +456,6 @@ int main(int argc, char **argv)
     testAutoStartUi();
     testVolumeSlider();
     testHitsOpaque();
+    testStatsToggle();
     return testing::testResult("test_popup");
 }

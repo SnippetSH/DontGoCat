@@ -4,8 +4,10 @@
 #include <QRect>
 #include <QWidget>
 
+class CatStats;
 class QButtonGroup;
 class QCheckBox;
+class QLabel;
 class QPushButton;
 class QSlider;
 class QTimer;
@@ -30,6 +32,13 @@ public:
     bool soundChecked() const;
     void setVolume(int percent);              // 시그널 없이 슬라이더 값만 갱신
     int volume() const;
+
+    // 통계 영역 (README 5.14). 맨 위 ▲/▼ 토글 버튼으로 펼치면 기존 내용 위에 통계가 나타나고 팝업이 위로 커진다
+    // (하단 = 바닥 y, 폭과 종료 버튼 위치는 펼침 여부와 무관하게 그대로).
+    void setStatsSource(const CatStats *stats);   // 소유권 없음. nullptr 이면 값 칸을 "-" 로
+    void setStatsExpanded(bool expanded);         // 토글 버튼 클릭과 같음 (시그널 없음)
+    bool statsExpanded() const;
+    void refreshStats();                          // 지금 값으로 표시 갱신 (펼쳐져 있는 동안 kStatsRefreshMs 마다 자동)
 
     // anchorRect: 트레이 아이콘(또는 TrayNotifyWnd) 사각형, floorY: 바닥 y, monitor: 화면 밖 방지용
     void showAt(const QRect &anchorRect, int floorY, const QRect &monitor);
@@ -57,7 +66,8 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
-    void relayout();                 // 크기 재계산 + 앵커 기준 재배치
+    void relayout(bool keepWidth = false);   // 크기 재계산 + 앵커 기준 재배치 (keepWidth: 표시 중 폭이 줄지 않게)
+    QWidget *buildStatsPanel();
     void closeIfDeactivated();
 
     QPushButton *m_quitButton = nullptr;
@@ -68,6 +78,12 @@ private:
     QTimer *m_volumeCommit = nullptr;   // 클릭 이동 + 놓기, 휠 연속 변경을 한 번의 volumeSelected 로 묶는다
     int m_committedVolume = 0;          // 마지막으로 알린(또는 setVolume 으로 받은) 값
     int m_scale = 3;
+
+    // 통계 영역
+    QPushButton *m_statsToggle = nullptr;   // objectName "statsToggle", 텍스트 ▲(접힘) / ▼(펼침)
+    QWidget *m_statsPanel = nullptr;        // objectName "statsPanel", 접히면 hide
+    QTimer *m_statsRefresh = nullptr;       // 보이고 펼쳐져 있는 동안만 동작
+    const CatStats *m_stats = nullptr;
 
     // 마지막 showAt 인자 (배율이 바뀌면 같은 기준으로 다시 배치)
     QRect m_anchorRect;

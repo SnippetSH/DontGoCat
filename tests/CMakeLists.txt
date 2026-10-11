@@ -35,5 +35,8 @@ ccat_add_test(test_voice test_voice.cpp LIBS ccat_core)
 # QuitPopup 크기 / 배치 (배율별)
 ccat_add_test(test_popup test_popup.cpp GUI LIBS ccat_ui)
 
+# CatStats 누적/세션 합산, QSettings 저장·복원(임시 INI), 표시 형식
+ccat_add_test(test_stats test_stats.cpp LIBS ccat_ui)
+
 # AutoStart (HKCU\Software\CCatTest\Run 임시 키만 사용, 실제 Run 키는 건드리지 않음)
 ccat_add_test(test_autostart test_autostart.cpp LIBS ccat_ui)
