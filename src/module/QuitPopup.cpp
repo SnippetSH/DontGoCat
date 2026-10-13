@@ -2,6 +2,7 @@
 
 #include "CatStats.hpp"
 #include "Config.hpp"
+#include "DpiSizeLock.hpp"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -307,6 +308,14 @@ void QuitPopup::closeIfDeactivated()
 {
     if (isVisible() && m_wasActive)
         hide();
+}
+
+bool QuitPopup::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
+{
+    // 물리 px 고정 크기이므로 DPI 가 다른 모니터로 넘어갈 때 Windows / Qt 가 DPI 비율만큼 크기를 바꾸지 못하게 한다
+    if (DpiSizeLock::handle(eventType, message, result, size()))
+        return true;
+    return QWidget::nativeEvent(eventType, message, result);
 }
 
 bool QuitPopup::eventFilter(QObject *watched, QEvent *event)

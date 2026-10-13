@@ -12,3 +12,5 @@ ccat.log
 .serena
 README-*.md
 graphify-out/
+.archify/
+archify-*.html

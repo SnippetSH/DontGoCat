@@ -3,11 +3,12 @@
 #include "CatSprite.hpp"
 #include "Surface.hpp"
 
+#include <QByteArray>
 #include <QImage>
 #include <QWidget>
 
 // 고양이를 그리는 투명 최상위 창 (README 3.4, 5.4).
-// - 한 변 32 × scale 정사각형 고정 크기 (모든 회전을 담음)
+// - 한 변 32 × scale 정사각형 고정 크기 (모든 회전을 담음). DPI 가 다른 모니터를 넘나들어도 물리 px 크기를 유지한다
 // - 기본은 클릭 통과 (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
 // - 종료 버튼을 덮는 동안 / Shift 잡기 대기 / 잡혀 있는 동안만 setClickThrough(false) → 불투명 픽셀만 클릭을 받는다 (README 3.4)
 class CatOverlay : public QWidget
@@ -44,6 +45,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
 
 private:
     void applyNativeStyle();

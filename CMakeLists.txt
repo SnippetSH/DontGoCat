@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DontGoCat VERSION 1.2.0 LANGUAGES CXX)
+project(DontGoCat VERSION 1.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
@@ -57,6 +57,8 @@ add_library(ccat_ui STATIC
     src/module/CatStats.cpp
     src/include/CatOverlay.hpp
     src/module/CatOverlay.cpp
+    src/include/DpiSizeLock.hpp
+    src/module/DpiSizeLock.cpp
     src/include/QuitGuard.hpp
     src/module/QuitGuard.cpp
     src/include/QuitPopup.hpp

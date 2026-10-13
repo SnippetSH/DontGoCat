@@ -9,6 +9,7 @@
 #include "CatOverlay.hpp"
 
 #include "Config.hpp"
+#include "DpiSizeLock.hpp"
 
 #include <QGuiApplication>
 #include <QMouseEvent>
@@ -69,13 +70,28 @@ void CatOverlay::place()
 {
     // 스프라이트는 창 왼쪽 위(0,0)부터 그린다. 앵커가 anchorDesktop 에 오도록 창 왼쪽 위를 계산.
     const QPoint topLeft = m_anchorDesktop - CatSprite::anchorIn(m_gravity) * m_scale;
-    if (m_placed && topLeft == m_topLeft)
+    const int side = CatSprite::Width * m_scale;
+    const QRect want(topLeft, QSize(side, side));
+    HWND hwnd = toHwnd(winId());
+    // 위치가 그대로여도 DPI 가 다른 모니터로 넘어가며 Windows / Qt 가 창 위치·크기를 바꿨을 수 있다 → 실제 사각형까지 같을 때만 건너뛴다
+    RECT real{};
+    if (m_placed && topLeft == m_topLeft && GetWindowRect(hwnd, &real)
+        && QRect(real.left, real.top, real.right - real.left, real.bottom - real.top) == want)
         return;
     m_topLeft = topLeft;
     m_placed = true;
-    // 활성화/Z 순서/크기를 건드리지 않고 이동만 한다
-    SetWindowPos(toHwnd(winId()), nullptr, topLeft.x(), topLeft.y(), 0, 0,
-                 SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+    // 활성화/Z 순서는 건드리지 않고, 크기도 매번 물리 px 로 명시해 DPI 변경으로 틀어진 크기를 바로잡는다
+    SetWindowPos(hwnd, nullptr, want.x(), want.y(), want.width(), want.height(),
+                 SWP_NOACTIVATE | SWP_NOZORDER);
+}
+
+bool CatOverlay::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
+{
+    // DPI 가 다른 모니터로 넘어가도 창 크기는 물리 px 그대로 (DPI 비율로 줄거나 늘지 않게)
+    if (DpiSizeLock::handle(eventType, message, result,
+                            QSize(CatSprite::Width * m_scale, CatSprite::Width * m_scale)))
+        return true;
+    return QWidget::nativeEvent(eventType, message, result);
 }
 
 void CatOverlay::setClickThrough(bool on)

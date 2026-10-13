@@ -18,6 +18,7 @@ class QTimer;
 // - 팝업 하단과 종료 버튼 하단 = 바닥 y (작업표시줄 윗면) → 바닥의 고양이가 버튼을 덮을 수 있다
 // - 종료 버튼 크기 = Config::kQuitButtonW × kQuitButtonH (물리 px 고정, 배율과 무관)
 // - 앱 비활성화 / Esc 로 닫힘
+// - 크기는 물리 px 고정: DPI 가 다른 모니터로 옮겨져도 DPI 비율로 줄거나 늘지 않는다 (DpiSizeLock)
 class QuitPopup : public QWidget
 {
     Q_OBJECT
@@ -59,6 +60,7 @@ signals:
     void closed();
 
 protected:
+    bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void changeEvent(QEvent *event) override;
