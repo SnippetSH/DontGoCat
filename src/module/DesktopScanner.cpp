@@ -446,7 +446,10 @@ const DesktopSnapshot &DesktopScanner::scanNow()
 
     // ── 전체화면 감지 ────────────────────────────────
     const HWND fg = GetForegroundWindow();
-    if (fg && !isShellClass(classNameOf(fg))) {
+    // 트레이 오버플로·빠른 설정 등 셸 플라이아웃은 WS_EX_TOOLWINDOW 창이다.
+    // (XamlExplorerHostIslandWindow 는 캡션 없이 모니터 전체를 덮어 사각형 판정에 걸린다.)
+    const bool fgToolWindow = fg && (GetWindowLongPtrW(fg, GWL_EXSTYLE) & WS_EX_TOOLWINDOW);
+    if (fg && !fgToolWindow && !isShellClass(classNameOf(fg))) {
         RECT frc{};
         // 최대화/모니터 크기의 "일반 캡션 창"은 전체화면이 아니다 (작업표시줄 자동 숨김 시 최대화 창이 모니터를 덮는다).
         // 캡션 없는(borderless) 창만 사각형 덮임으로 전체화면 판정한다.
@@ -461,9 +464,11 @@ const DesktopSnapshot &DesktopScanner::scanNow()
             }
         }
 
+        // QUNS_BUSY 는 쓰지 않는다: 다른 모니터에 최대화 창이 있거나 셸 플라이아웃만 열려도 BUSY 가 나와
+        // 평범한 전경 창의 모니터까지 숨겨진다. borderless 전체화면은 위 사각형 판정이 잡는다.
         QUERY_USER_NOTIFICATION_STATE qs = QUNS_ACCEPTS_NOTIFICATIONS;
         if (SUCCEEDED(SHQueryUserNotificationState(&qs))
-            && (qs == QUNS_BUSY || qs == QUNS_RUNNING_D3D_FULL_SCREEN || qs == QUNS_PRESENTATION_MODE)) {
+            && (qs == QUNS_RUNNING_D3D_FULL_SCREEN || qs == QUNS_PRESENTATION_MODE)) {
             const int mi = monitorIndexOf(menum.handles, MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST));
             if (mi >= 0)
                 snap.monitors[mi].fullscreen = true;
