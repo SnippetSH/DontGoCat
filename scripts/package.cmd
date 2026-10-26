@@ -42,11 +42,14 @@ if exist "%APP_DIR%" (
 mkdir "%APP_DIR%" || goto :fail
 copy /y "%BUILD_DIR%\DontGoCat.exe" "%APP_DIR%\" >nul || goto :fail
 
-rem The app uses only Core/Gui/Widgets + platforms/qwindows + styles. Images come from the built-in PNG
-rem handler (Qt resources), so imageformats / iconengines (svg) / generic / networkinformation / tls (network)
-rem plugins are not needed.
+rem The app uses Core/Gui/Widgets/Network + platforms/qwindows + styles + tls/qschannelbackend.
+rem Network is only the update check (HTTPS to api.github.com), which needs the Windows TLS backend (schannel);
+rem the OpenSSL backend (no OpenSSL DLLs shipped) and the cert-only backend are excluded.
+rem Images come from the built-in PNG handler (Qt resources), so imageformats / iconengines (svg) / generic /
+rem networkinformation plugins are not needed.
 "%WINDEPLOYQT%" --release --no-translations --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw --no-ffmpeg ^
-    --no-compiler-runtime --skip-plugin-types imageformats,iconengines,generic,networkinformation,tls,platforminputcontexts ^
+    --no-compiler-runtime --skip-plugin-types imageformats,iconengines,generic,networkinformation,platforminputcontexts ^
+    --exclude-plugins qopensslbackend,qcertonlybackend ^
     "%APP_DIR%\DontGoCat.exe" || goto :fail
 
 rem MSVC runtime, app-local (VC redistributable DLLs may ship next to the app)

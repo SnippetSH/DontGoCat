@@ -151,4 +151,22 @@ inline constexpr int kStatsSaveIntervalMs = 60000;    // 누적 통계 주기 �
 inline constexpr int kStatsRefreshMs = 1000;          // 팝업 통계 영역이 펼쳐져 있는 동안 표시 갱신 주기
 inline constexpr double kFallbackDpi = 96.0;          // 모니터 물리 DPI 를 모를 때 이동 거리 환산에 쓰는 값
 
+// ── 업데이트 확인 (UpdateChecker, README 5.15) ───────
+inline constexpr const char *kUpdateApiUrl = "https://api.github.com/repos/SnippetSH/DontGoCat/releases/latest";
+inline constexpr const char *kReleasesPageUrl = "https://github.com/SnippetSH/DontGoCat/releases/latest";
+inline constexpr const char *kSettingsUpdateSkippedKey = "update/skippedVersion";   // "이 버전 건너뛰기" 로 고른 버전
+inline constexpr int kUpdateCheckDelayMs = 10000;     // 시작 후 이만큼 뒤에 한 번 확인 (시작 직후 네트워크가 아직 없을 수 있다)
+inline constexpr int kUpdateTimeoutMs = 10000;        // 응답이 이보다 늦으면 포기
+
+// ── 말풍선 (SpeechBubble / BubbleUpdateNotifier, README 5.15) ──
+inline constexpr const char *kBubbleUpdateText = "새 버전 %1 나왔다냥!";   // %1 = 새 버전
+inline constexpr const char *kBubbleSkipText = "이 버전 건너뛰기";
+inline constexpr int kBubbleTimeoutMs = 60000;       // 아무것도 안 누르면 이만큼 뒤 '나중에' 로 닫힘 (hover 중 정지)
+inline constexpr int kBubbleFontPx = 13;             // 본문 글자 크기 (물리 px, 배율과 무관)
+inline constexpr int kBubbleSmallFontPx = 11;        // 건너뛰기 링크 / × 글자 크기
+inline constexpr int kBubblePaddingPx = 8;           // 테두리 안쪽 여백 (물리 px)
+inline constexpr int kBubbleBorderSpritePx = 1;      // 테두리 두께 (스프라이트 px, × scale)
+inline constexpr int kBubbleTailSpritePx = 4;        // 꼬리 길이 (스프라이트 px, × scale)
+inline constexpr int kBubbleGapSpritePx = 1;         // 꼬리 끝과 고양이 사이 간격 (스프라이트 px, × scale)
+
 } // namespace Config

@@ -6,8 +6,8 @@ The binary releases (installer and portable zip) also contain the
 following third-party components, which keep their own licenses.
 
 
-1. Qt 6.11.2 (Qt Core, Qt GUI, Qt Widgets, qwindows platform plugin,
-   qmodernwindowsstyle style plugin)
+1. Qt 6.11.2 (Qt Core, Qt GUI, Qt Widgets, Qt Network, qwindows platform
+   plugin, qmodernwindowsstyle style plugin, qschannelbackend TLS plugin)
 -------------------------------------------------------------------
 
 Copyright (C) The Qt Company Ltd. and other contributors.
@@ -18,7 +18,7 @@ Qt is used under the GNU Lesser General Public License version 3
 licenses/Qt-LGPL-3.0-GPL-3.0.txt.
 
 - DontGoCat links to Qt dynamically. The Qt libraries are the separate
-  Qt6*.dll files and the plugin DLLs under platforms/ and styles/.
+  Qt6*.dll files and the plugin DLLs under platforms/, styles/ and tls/.
   You may replace them with your own compatible build of Qt 6.11.x.
 - The Qt libraries are unmodified. The complete corresponding source
   code of Qt 6.11.2 is available from The Qt Company's download server:

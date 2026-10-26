@@ -41,5 +41,14 @@ ccat_add_test(test_stats test_stats.cpp LIBS ccat_ui)
 # DPI 다른 모니터 사이 이동 시 고정 크기 창 유지 (CatOverlay / QuitPopup / DpiSizeLock). 실제 Windows 플랫폼으로 숨긴 네이티브 창만 사용 (GUI 플래그 없음)
 ccat_add_test(test_dpi test_dpi.cpp LIBS ccat_ui)
 
+# SpeechBubble 크기 / 배치 / 클릭 영역 / 시간 초과 (offscreen)
+ccat_add_test(test_bubble test_bubble.cpp GUI LIBS ccat_ui)
+
+# BubbleUpdateNotifier 말풍선 알림 흐름 (실제 CatBrain + SpeechBubble, 가짜 울음 Player)
+ccat_add_test(test_notifier test_notifier.cpp GUI LIBS ccat_core)
+
+# 업데이트 확인 판정 (버전 파싱 / 비교 / 건너뛰기). 네트워크는 쓰지 않는다
+ccat_add_test(test_update test_update.cpp LIBS ccat_update)
+
 # AutoStart (HKCU\Software\CCatTest\Run 임시 키만 사용, 실제 Run 키는 건드리지 않음)
 ccat_add_test(test_autostart test_autostart.cpp LIBS ccat_ui)

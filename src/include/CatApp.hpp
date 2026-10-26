@@ -4,13 +4,17 @@
 #include "CatOverlay.hpp"
 #include "CatSprite.hpp"
 #include "CatStats.hpp"
+#include "BubbleUpdateNotifier.hpp"
 #include "CatVoice.hpp"
 #include "Config.hpp"
 #include "DesktopScanner.hpp"
 #include "Locomotion.hpp"
 #include "MouseWatcher.hpp"
 #include "PathPlanner.hpp"
+#include "SpeechBubble.hpp"
 #include "TrayController.hpp"
+#include "UpdateChecker.hpp"
+#include "UpdateNotifier.hpp"
 
 #include <QAbstractNativeEventFilter>
 #include <QElapsedTimer>
@@ -65,6 +69,8 @@ private:
     void updateClickThrough();                            // tick: brainWants && !shiftHover && !grabbing (README 3.4)
     QPoint spawnPoint(const DesktopSnapshot &snapshot) const;
     QPoint trayFloorPoint() const;
+    void onUpdateAvailable(const QString &version);       // 새 릴리스 알림 → 선택 처리 (README 5.15)
+    BubblePlacement bubblePlacement() const;              // 지금 프레임의 고양이 이미지 사각형 / 중력 / 모니터
     void updateStats(qint64 dtMs);                        // tick: 실행/활동 시간 + 이동 거리 (README 5.14)
     double pxToMeters(double px, QPoint at) const;        // at 이 있는 모니터의 물리 DPI 로 환산 (모르면 kFallbackDpi)
 
@@ -80,6 +86,9 @@ private:
     CatBrain m_brain;
     CatVoice m_voice;
     CatStats m_stats;
+    SpeechBubble m_bubble;
+    UpdateChecker m_updates;
+    std::unique_ptr<UpdateNotifier> m_updateNotifier;   // 표시 방식 교체 지점 (지금은 고양이 말풍선)
 
     QTimer m_tickTimer;
     QTimer m_statsSaveTimer;           // Config::kStatsSaveIntervalMs

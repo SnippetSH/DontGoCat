@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DontGoCat VERSION 1.3.0 LANGUAGES CXX)
+project(DontGoCat VERSION 1.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)     # IntelliSense용 (선택)
 
 list(APPEND CMAKE_PREFIX_PATH "B:/Qt/6.11.2/msvc2022_64")
 
-find_package(Qt6 6.11.2 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.11.2 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 if(MSVC)
     add_compile_options(/utf-8)   # 소스의 한글 문자열
@@ -63,6 +63,8 @@ add_library(ccat_ui STATIC
     src/module/QuitGuard.cpp
     src/include/QuitPopup.hpp
     src/module/QuitPopup.cpp
+    src/include/SpeechBubble.hpp
+    src/module/SpeechBubble.cpp
     src/include/TrayController.hpp
     src/module/TrayController.cpp
 )
@@ -71,6 +73,16 @@ target_compile_definitions(ccat_ui PRIVATE CCAT_VERSION="${PROJECT_VERSION}")   
 if(WIN32)
     target_link_libraries(ccat_ui PUBLIC advapi32)   # AutoStart (레지스트리)
 endif()
+
+# ── 업데이트 확인 (README 5.15): 플랫폼 공통, Qt Network ──────
+add_library(ccat_update STATIC
+    src/include/UpdateChecker.hpp
+    src/module/UpdateChecker.cpp
+    src/include/UpdateNotifier.hpp
+    src/module/UpdateNotifier.cpp
+)
+target_include_directories(ccat_update PUBLIC ${CCAT_INCLUDE_DIR})
+target_link_libraries(ccat_update PUBLIC Qt6::Network Qt6::Widgets)
 
 # ── WP4: 이동 / 경로 / 행동 / 앱 ──────────────────────────────
 add_library(ccat_core STATIC
@@ -84,8 +96,11 @@ add_library(ccat_core STATIC
     src/module/CatVoice.cpp
     src/include/CatApp.hpp
     src/module/CatApp.cpp
+    src/include/BubbleUpdateNotifier.hpp
+    src/module/BubbleUpdateNotifier.cpp
 )
-target_link_libraries(ccat_core PUBLIC ccat_ui ccat_platform ccat_sprite)
+target_link_libraries(ccat_core PUBLIC ccat_ui ccat_platform ccat_sprite ccat_update)
+target_compile_definitions(ccat_core PRIVATE CCAT_VERSION="${PROJECT_VERSION}")   # CatApp → UpdateChecker 현재 버전
 if(WIN32)
     target_link_libraries(ccat_core PUBLIC winmm)   # CatVoice (PlaySound)
 endif()

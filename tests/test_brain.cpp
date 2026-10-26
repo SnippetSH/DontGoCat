@@ -145,6 +145,7 @@ static const char *stName(CatBrain::State s)
     case CatBrain::State::Falling: return "Falling";
     case CatBrain::State::QuitBlock: return "QuitBlock";
     case CatBrain::State::TrayApproach: return "TrayApproach";
+    case CatBrain::State::Announce: return "Announce";
     case CatBrain::State::MousePlay: return "MousePlay";
     default: return "Autonomous";
     }
@@ -972,6 +973,268 @@ static void testGrabbed()
     s4.brain.releaseGrab();   // Held 가 아니면 무시
 }
 
+// 5c. announce (말하기, README 5.9 / 5.15)
+struct AnnounceCount
+{
+    int started = 0;
+    int interrupted = 0;
+    explicit AnnounceCount(CatBrain &brain)
+    {
+        QObject::connect(&brain, &CatBrain::announceStarted, [this]() { ++started; });
+        QObject::connect(&brain, &CatBrain::announceInterrupted, [this]() { ++interrupted; });
+    }
+};
+
+static void testAnnounce()
+{
+    std::printf("[5c] announce\n");
+    using S = CatBrain::State;
+    using A = CatBrain::Activity;
+    g_log.clear();
+    const QRect btn(1657, 1016, 96, 24);
+
+    // 바닥 위: 즉시 시작, 멈춰서 sit 유지
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1000, kFloorY));
+        s.run(1000);
+        CHECK(!s.brain.announcePending(), "no pending before request");
+        s.brain.requestAnnounce();
+        CHECK(s.brain.state() == S::Announce, "announce started at once (%s)", stName(s.brain.state()));
+        CHECK(c.started == 1 && c.interrupted == 0, "started once (%d)", c.started);
+        CHECK(!s.brain.announcePending(), "pending cleared");
+        CHECK(s.brain.activity() == A::Other, "activity Other");
+        s.step();
+        const QPoint p = s.body.anchor();
+        s.run(20000);
+        CHECK(s.body.anchor() == p, "stays put on floor");
+        CHECK(s.body.frame().anim == CatAnim::Sit, "sits");
+        CHECK(s.brain.state() == S::Announce && c.started == 1, "still announcing, started once");
+
+        // 말하는 중 마우스 정지로 장난 시작 금지
+        s.brain.onMouseIdle(QPoint(1000, kFloorY - 40));
+        s.run(3000);
+        CHECK(s.brain.state() == S::Announce, "no mouse play during announce (%s)", stName(s.brain.state()));
+        s.brain.onUserMoved(QPoint(1010, kFloorY - 40));
+        s.run(500);
+        CHECK(s.brain.state() == S::Announce, "still announce after user moved");
+
+        // 끝: Autonomous, interrupted 없음
+        s.brain.endAnnounce();
+        CHECK(s.brain.state() == S::Autonomous, "endAnnounce -> Autonomous (%s)", stName(s.brain.state()));
+        CHECK(c.interrupted == 0, "endAnnounce does not interrupt");
+        s.run(10000);
+        CHECK(s.brain.state() != S::Announce && c.started == 1, "never restarts by itself");
+        s.brain.endAnnounce();   // 아무 때나 안전
+        CHECK(c.interrupted == 0, "extra endAnnounce is harmless");
+    }
+
+    // 벽 위: 붙은 채 정지
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1000, 100));
+        const bool onWall = s.until([&] {
+            const auto a = s.body.attachment();
+            return s.body.mode() == Locomotion::Mode::Attached && a && a->surface.kind != SurfaceKind::Floor
+                && s.body.isBusy();
+        }, 30 * 60 * 1000);
+        CHECK(onWall, "reached a wall");
+        const SurfaceId wallId = s.body.attachment()->surface;
+        s.brain.requestAnnounce();
+        CHECK(s.brain.state() == S::Announce && c.started == 1, "announce on wall");
+        s.step();
+        const QPoint p = s.body.anchor();
+        s.run(20000);
+        CHECK(s.body.anchor() == p, "stays put on wall");
+        CHECK(s.body.attachment() && s.body.attachment()->surface == wallId, "still attached to the wall");
+        CHECK(s.body.mode() == Locomotion::Mode::Attached, "attached");
+        CHECK(c.started == 1 && c.interrupted == 0, "started once on wall");
+        const CatAnim an = s.body.frame().anim;
+        CHECK(an != CatAnim::Sit && an != CatAnim::Sleep, "no sit on wall");
+    }
+
+    // 수면 중: 깨우지 않고 기다렸다가 자연 기상 뒤 시작
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1500, kFloorY));
+        CHECK(s.until([&] { return s.brain.activity() == A::Sleeping; }, 40 * 60 * 1000), "reached sleep loop");
+        s.brain.requestAnnounce();
+        CHECK(s.brain.announcePending() && s.brain.state() != S::Announce, "pending while sleeping");
+        s.run(5000);
+        CHECK(s.brain.activity() == A::Sleeping && c.started == 0, "still asleep, not woken");
+        CHECK(s.until([&] { return s.brain.state() == S::Announce; }, 60000), "starts after waking naturally");
+        CHECK(c.started == 1 && !s.brain.announcePending(), "started once, pending cleared");
+        CHECK(s.body.frame().anim == CatAnim::Sit, "sits after waking");
+    }
+
+    // 수면 전 sit 중: 기다림
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1500, kFloorY));
+        const int before = logCount("act sleep");
+        CHECK(s.until([&] { return logCount("act sleep") > before; }, 40 * 60 * 1000), "pre-sleep sit started");
+        CHECK(s.brain.activity() != A::Sleeping, "not asleep yet");
+        s.brain.requestAnnounce();
+        CHECK(s.brain.announcePending() && c.started == 0 && s.brain.state() == S::Autonomous, "pending during pre-sleep sit");
+        CHECK(s.until([&] { return s.brain.state() == S::Announce; }, 90000), "starts later");
+        CHECK(c.started == 1, "started once");
+    }
+
+    // QuitBlock / TrayApproach 중: 대기 후 시작
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(500, kFloorY));
+        s.brain.setPopupRect(QRect(1610, 900, 190, 140));
+        s.brain.onBlockRequested(btn);
+        s.run(200);
+        s.brain.requestAnnounce();
+        CHECK(s.brain.announcePending() && s.brain.state() == S::QuitBlock, "pending during QuitBlock");
+        s.run(3000);
+        CHECK(c.started == 0 && s.brain.state() == S::QuitBlock, "not started during QuitBlock");
+        s.brain.onBlockReleased();
+        CHECK(s.until([&] { return s.brain.state() == S::Announce; }, 60000), "starts after QuitBlock ends");
+        CHECK(c.started == 1 && c.interrupted == 0, "started once after block");
+    }
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(500, kFloorY));
+        s.brain.onUserMoved(QPoint(1800, 1000));
+        s.brain.onTrayApproach(true, QPoint(1700, kFloorY));
+        s.run(300);
+        s.brain.requestAnnounce();
+        CHECK(s.brain.announcePending() && s.brain.state() == S::TrayApproach, "pending during TrayApproach");
+        s.run(2000);
+        CHECK(c.started == 0, "not started during TrayApproach");
+        s.brain.onTrayApproach(false, QPoint());
+        s.run(100);
+        CHECK(s.brain.state() == S::Announce && c.started == 1, "starts after tray left (%s)", stName(s.brain.state()));
+    }
+
+    // 대기 중 취소
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(500, kFloorY));
+        s.brain.setPopupRect(QRect(1610, 900, 190, 140));
+        s.brain.onBlockRequested(btn);
+        s.run(200);
+        s.brain.requestAnnounce();
+        s.brain.endAnnounce();
+        CHECK(!s.brain.announcePending(), "endAnnounce cancels pending");
+        s.brain.onBlockReleased();
+        s.run(30000);
+        CHECK(c.started == 0 && c.interrupted == 0 && s.brain.state() != S::Announce, "cancelled request never starts");
+    }
+
+    // 말하는 중 끼어듦: 각각 interrupted 1회, 이후 재시작 없음
+    const auto announced = [&](Sim &s, AnnounceCount &c, QPoint spawn) {
+        s.spawnAt(spawn);
+        s.run(500);
+        s.brain.requestAnnounce();
+        CHECK(s.brain.state() == S::Announce && c.started == 1, "announcing (%s)", stName(s.brain.state()));
+    };
+    {   // onBlockRequested
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        announced(s, c, QPoint(1000, kFloorY));
+        s.brain.setPopupRect(QRect(1610, 900, 190, 140));
+        s.brain.onBlockRequested(btn);
+        CHECK(s.brain.state() == S::QuitBlock && c.interrupted == 1, "block interrupts (%s)", stName(s.brain.state()));
+        s.run(500);
+        s.brain.onBlockReleased();
+        s.run(30000);
+        CHECK(c.interrupted == 1 && c.started == 1 && s.brain.state() != S::Announce, "no resume after block");
+    }
+    {   // onTrayApproach(true)
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        announced(s, c, QPoint(500, kFloorY));
+        s.brain.onUserMoved(QPoint(1800, 1000));
+        s.brain.onTrayApproach(true, QPoint(1700, kFloorY));
+        CHECK(s.brain.state() == S::TrayApproach && c.interrupted == 1, "tray interrupts (%s)", stName(s.brain.state()));
+        s.run(500);
+        s.brain.onTrayApproach(false, QPoint());
+        s.run(30000);
+        CHECK(c.interrupted == 1 && c.started == 1 && s.brain.state() != S::Announce, "no resume after tray");
+    }
+    {   // grab
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        announced(s, c, QPoint(1000, kFloorY));
+        CHECK(s.brain.grab(QPoint(950, 600)), "grab accepted");
+        CHECK(s.brain.state() == S::Grabbed && c.interrupted == 1, "grab interrupts (%s)", stName(s.brain.state()));
+        s.run(500);
+        s.brain.releaseGrab();
+        CHECK(s.until([&] { return s.body.mode() == Locomotion::Mode::Attached && s.brain.state() == S::Autonomous; }, 10000),
+              "back to autonomous after grab");
+        s.run(30000);
+        CHECK(c.interrupted == 1 && c.started == 1 && s.brain.state() != S::Announce, "no resume after grab");
+    }
+    {   // Hidden
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        announced(s, c, QPoint(1000, kFloorY));
+        DesktopSnapshot fs = fullSnap();
+        fs.monitors[0].fullscreen = true;
+        s.setSnap(fs);
+        s.step();
+        CHECK(s.brain.state() == S::Hidden && c.interrupted == 1, "hidden interrupts (%s)", stName(s.brain.state()));
+        s.run(1000);
+        s.setSnap(fullSnap());
+        s.run(30000);
+        CHECK(c.interrupted == 1 && c.started == 1 && s.brain.state() != S::Announce, "no resume after hidden");
+    }
+    {   // 낙하 (창이 닫힘)
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        announced(s, c, QPoint(1450, 100));
+        CHECK(s.body.attachment() && s.body.attachment()->surface.owner == hD, "on roof D");
+        s.setSnap(fullSnap(false));
+        s.step();
+        CHECK(s.brain.state() == S::Falling && c.interrupted == 1, "falling interrupts (%s)", stName(s.brain.state()));
+        CHECK(s.until([&] { return s.brain.state() != S::Falling; }, 5000), "landed");
+        s.run(30000);
+        CHECK(c.interrupted == 1 && c.started == 1 && s.brain.state() != S::Announce, "no resume after falling");
+    }
+
+    // 대기 중 끼어듦은 대기 유지: 잡혀 있다가 내려오면 시작, Hidden 중 요청도 보일 때 시작
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1000, kFloorY));
+        s.run(500);
+        CHECK(s.brain.grab(QPoint(950, 600)), "grab accepted");
+        s.brain.requestAnnounce();
+        CHECK(s.brain.announcePending() && c.started == 0, "pending while grabbed");
+        s.run(300);
+        s.brain.releaseGrab();
+        CHECK(s.until([&] { return s.brain.state() == S::Announce; }, 10000), "starts after grab ends");
+        CHECK(c.started == 1 && c.interrupted == 0, "started once after grab");
+    }
+    {
+        Sim s(fullSnap());
+        AnnounceCount c(s.brain);
+        s.spawnAt(QPoint(1000, kFloorY));
+        DesktopSnapshot fs = fullSnap();
+        fs.monitors[0].fullscreen = true;
+        s.setSnap(fs);
+        s.step();
+        CHECK(s.brain.state() == S::Hidden, "hidden");
+        s.brain.requestAnnounce();
+        s.run(2000);
+        CHECK(s.brain.announcePending() && c.started == 0, "pending while hidden");
+        s.setSnap(fullSnap());
+        s.run(100);
+        CHECK(s.brain.state() == S::Announce && c.started == 1 && c.interrupted == 0, "starts after unhidden (%s)", stName(s.brain.state()));
+    }
+}
+
 // 6. replan
 static void testReplan()
 {
@@ -1023,6 +1286,7 @@ int main(int argc, char **argv)
     testSleep();
     testHiddenFalling();
     testGrabbed();
+    testAnnounce();
     testReplan();
     testNativeMsg();
     return testing::testResult("test_brain");

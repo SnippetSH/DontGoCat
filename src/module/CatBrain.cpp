@@ -30,6 +30,7 @@ const char *stateName(CatBrain::State s)
     case CatBrain::State::Falling:      return "Falling";
     case CatBrain::State::QuitBlock:    return "QuitBlock";
     case CatBrain::State::TrayApproach: return "TrayApproach";
+    case CatBrain::State::Announce:     return "Announce";
     case CatBrain::State::MousePlay:    return "MousePlay";
     case CatBrain::State::Autonomous:   return "Autonomous";
     }
@@ -80,7 +81,7 @@ CatBrain::Activity CatBrain::activity() const
     case State::Autonomous:
         return (m_act == AutoAct::Sleep && m_sleeping) ? Activity::Sleeping : Activity::Roaming;
     default:
-        return Activity::Other;   // QuitBlock / TrayApproach
+        return Activity::Other;   // QuitBlock / TrayApproach / Announce
     }
 }
 
@@ -125,8 +126,10 @@ void CatBrain::setScale(int scale)
     // 거리 상수가 모두 바뀌므로 진행 중인 경로/행동을 버린다 (방해 중이면 팝업도 다시 배치되므로 포기)
     if (m_intent == State::QuitBlock)
         abandonBlock("scale changed");
-    else if (spawned())
+    else if (spawned()) {
+        interruptAnnounce();   // 말하던 중이었다면 말풍선도 닫히게 알린다
         enterAutonomous("scale changed");
+    }
 }
 
 void CatBrain::setPopupRect(const QRect &popup)
@@ -418,6 +421,7 @@ bool CatBrain::updateHidden()
     if (fullscreen) {
         qCInfo(lcBrain) << "state" << stateName(m_intent) << "-> Hidden (fullscreen)";
         const bool wasBlocking = m_intent == State::QuitBlock;
+        interruptAnnounce();   // 대기 중인 요청은 유지 (다시 보이면 시작)
         enterAutonomous("hidden");
         m_body.stop();
         emit visibilityChanged(false);
@@ -447,6 +451,7 @@ bool CatBrain::grab(QPoint gripDesktop)
     if (!spawned() || m_hidden || m_intent == State::QuitBlock)
         return false;
     qCInfo(lcBrain) << "state" << stateName(state()) << "-> Grabbed";
+    interruptAnnounce();   // 놓인 뒤에도 말하기는 이어 가지 않는다 (restartIntent → Autonomous)
     restoreClickThrough();
     abortRoute();
     noteSleepEnded();
@@ -481,6 +486,7 @@ bool CatBrain::updateFalling()
         if (!m_falling) {
             m_falling = true;
             qCInfo(lcBrain) << "state" << stateName(m_intent) << "-> Falling";
+            interruptAnnounce();
             restoreClickThrough();
             abortRoute();
             noteSleepEnded();
@@ -516,9 +522,13 @@ void CatBrain::tick(qint64 nowMs)
     if (!m_body.attachment())
         return;
 
+    if (m_announcePending && announceAllowed())
+        startAnnounce();
+
     switch (m_intent) {
     case State::QuitBlock:    runQuitBlock(); break;
     case State::TrayApproach: runTrayApproach(); break;
+    case State::Announce:     runAnnounce(); break;
     case State::MousePlay:    runMousePlay(); break;
     default:                  runAutonomous(); break;
     }
@@ -564,6 +574,7 @@ void CatBrain::onTrayApproach(bool near, QPoint trayFloorPoint)
     if (m_hidden || m_intent == State::QuitBlock)
         return;
     m_trayFloorPoint = trayFloorPoint;
+    interruptAnnounce();
     beginIntent(State::TrayApproach, "tray near");
     m_trayPhase = TrayPhase::Walk;
     startTrayRoute();
@@ -577,6 +588,7 @@ void CatBrain::onBlockRequested(QRect quitButtonDesktop)
         emit blockAbandoned();
         return;
     }
+    interruptAnnounce();
     beginIntent(State::QuitBlock, "block requested");
     m_blockPhase = BlockPhase::Approach;
     startBlockRoute();
@@ -1241,4 +1253,68 @@ void CatBrain::startNextAutoAct()
     case AutoAct::None:
         break;
     }
+}
+
+// ── Announce (말하기) ────────────────────────────────────
+
+bool CatBrain::announcePending() const
+{
+    return m_announcePending;
+}
+
+bool CatBrain::announceAllowed() const
+{
+    // Hidden / Grabbed / Falling / QuitBlock / TrayApproach 중, 공중, 수면(수면 전 sit 포함) 중에는 기다린다
+    if (m_hidden || m_falling || m_body.mode() != Locomotion::Mode::Attached || !m_body.attachment())
+        return false;
+    if (m_intent != State::Autonomous && m_intent != State::MousePlay)
+        return false;
+    if (m_intent == State::Autonomous && m_act == AutoAct::Sleep)
+        return false;   // 깨우지 않는다. 자연 기상(최대 42 s)을 기다린다
+    return true;
+}
+
+void CatBrain::requestAnnounce()
+{
+    m_announcePending = true;
+    qCInfo(lcBrain) << "announce requested";
+    if (spawned() && announceAllowed())
+        startAnnounce();
+}
+
+void CatBrain::startAnnounce()
+{
+    m_announcePending = false;
+    beginIntent(State::Announce, "announce");   // 경로/행동 중단, 수면 중이 아니므로 재취침 금지는 시작되지 않는다
+    m_body.stop();
+    const SurfaceSegment *seg = bodySegment();
+    // 바닥/지붕(중력 아래)은 앉아서 대기, 벽은 그 자리에 붙은 채 정지 (stop() 이 벽 위 대기 상태)
+    if (seg && seg->id.kind == SurfaceKind::Floor)
+        m_body.play(CatAnim::Sit);
+    qCInfo(lcBrain) << "announce started";
+    emit announceStarted();
+}
+
+void CatBrain::interruptAnnounce()
+{
+    if (m_intent != State::Announce)
+        return;
+    qCInfo(lcBrain) << "announce interrupted";
+    enterAutonomous("announce interrupted");
+    emit announceInterrupted();
+}
+
+void CatBrain::endAnnounce()
+{
+    m_announcePending = false;
+    if (m_intent != State::Announce)
+        return;
+    qCInfo(lcBrain) << "announce ended";
+    enterAutonomous("announce ended");
+}
+
+void CatBrain::runAnnounce()
+{
+    // 그 자리에 머문다: 자율 행동/장난 없음. 몸은 CatApp::followWindow 가 창을 따라 움직여 준다.
+    // m_idlePending 은 건드리지 않는다 → 끝난 뒤 runAutonomous 가 장난을 평가
 }

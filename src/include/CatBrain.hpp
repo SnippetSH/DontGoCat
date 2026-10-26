@@ -15,7 +15,7 @@ class Locomotion;
 class MouseWatcher;
 
 // 행동 상태 머신 (README 5.9). 위쪽 상태가 아래쪽을 선점한다.
-//   Hidden > Grabbed > Falling > QuitBlock > TrayApproach > MousePlay > Autonomous
+//   Hidden > Grabbed > Falling > QuitBlock > TrayApproach > Announce > MousePlay > Autonomous
 //
 // Hidden / Grabbed / Falling 은 "덮어씌우는" 상태라 원래 의도(QuitBlock 등)를 지운 채 끼어들지 않고,
 // 끝나면 의도에 맞게 다시 시작한다 (Hidden → Autonomous, Grabbed → 놓이면 Falling, Falling → 같은 의도로 재계획).
@@ -28,12 +28,13 @@ class CatBrain : public QObject
     Q_OBJECT
 
 public:
-    enum class State { Hidden, Grabbed, Falling, QuitBlock, TrayApproach, MousePlay, Autonomous };
+    enum class State { Hidden, Grabbed, Falling, QuitBlock, TrayApproach, Announce, MousePlay, Autonomous };
 
     // 통계용 현재 활동 (README 5.14). 덮어씌우는 상태(Hidden/Grabbed/Falling)와 QuitBlock/TrayApproach 는 Other
     //   Sleeping: Autonomous 이고 sleep 루프 중 (앉는 준비 동작은 Roaming)
     //   Roaming : 그 밖의 Autonomous
     //   Playing : MousePlay (접근 포함 전체)
+    //   Announce 는 Other
     enum class Activity { Other, Roaming, Sleeping, Playing };
 
     CatBrain(Locomotion &body, PathPlanner &planner, MouseWatcher &mouse, QObject *parent = nullptr);
@@ -59,6 +60,14 @@ public:
     void moveGrab(QPoint gripDesktop);
     void releaseGrab();
 
+    // 말하기 (README 5.9, 5.15): 말풍선을 띄우는 동안 그 자리에 멈춘다 (바닥/지붕 = sit, 벽 = 그 자리 정지).
+    // 자는 중(수면 전 sit 포함)이거나 더 높은 상태(Hidden/Grabbed/Falling/QuitBlock/TrayApproach) 중이면
+    // 끝날 때까지 기다렸다가 시작한다. 시작하면 announceStarted.
+    // 말하는 중 더 높은 상태가 끼어들면 announceInterrupted 후 말하기는 끝난다 (다시 시작하지 않는다).
+    void requestAnnounce();
+    void endAnnounce();               // 말풍선이 닫혔다 → 자율 행동. 대기 중인 요청도 취소
+    bool announcePending() const;     // 요청을 받았지만 아직 시작 전
+
 public slots:
     void onTrayApproach(bool near, QPoint trayFloorPoint);
     void onBlockRequested(QRect quitButtonDesktop);
@@ -72,6 +81,8 @@ signals:
     void visibilityChanged(bool visible);
     void blockAbandoned();              // 도달 불가 등으로 방해를 포기 → TrayController 가 방해를 해제해야 한다
     void nudged();                      // 툭툭: nudge 로 커서가 실제로 움직였다 (MouseWatcher::nudge 성공 시에만, 통계)
+    void announceStarted();             // 말하기 시작 (멈춰 앉음) → 말풍선 표시
+    void announceInterrupted();         // 말하는 중 끼어듦 → 말풍선은 '나중에' 로 닫힌다
 
 private:
     enum class RouteStatus { None, Running, Arrived, Failed };
@@ -145,6 +156,12 @@ private:
     void doNudge();
     void onBodyFrame(CatAnim anim, int frame);
 
+    // 말하기 (README 5.9, 5.15)
+    bool announceAllowed() const;    // 대기 중인 요청을 지금 시작해도 되는가
+    void startAnnounce();
+    void interruptAnnounce();        // 말하는 중이면 announceInterrupted 후 Autonomous (대기 중인 요청은 건드리지 않는다)
+    void runAnnounce();
+
     void runAutonomous();
     bool updateAutoAct();
     void startNextAutoAct();
@@ -201,6 +218,9 @@ private:
     qint64 m_actEndMs = 0;
     bool m_sleeping = false;         // Sleep: sit 이 끝나고 sleep 루프에 들어갔는가
     bool m_startling = false;        // 장난 중 놀라 뛴 점프로 공중에 있다 (Falling 이 아님)
+
+    // 말하기: 요청을 받았지만 아직 시작하지 않았다 (시작 조건은 tick 에서 매번 확인)
+    bool m_announcePending = false;
 
     // 수면 (README 5.9.1)
     bool updateSleep();              // sleep 루프 중 기상 판정. true = 깼다 (act 종료)

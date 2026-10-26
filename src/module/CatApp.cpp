@@ -4,9 +4,11 @@
 
 #include <QCoreApplication>
 #include <QCursor>
+#include <QDesktopServices>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
+#include <QUrl>
 #include <QWidget>
 
 #include <algorithm>
@@ -196,6 +198,12 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     m_nativeFilter = std::make_unique<NativeFilter>(*this);
     qApp->installNativeEventFilter(m_nativeFilter.get());
 
+    // 새 릴리스 확인 (README 5.15). 표시 방식을 바꿀 때는 여기서 만드는 구현만 바꾼다
+    // (대화상자로 돌아가려면 std::make_unique<DialogUpdateNotifier>())
+    m_updateNotifier = std::make_unique<BubbleUpdateNotifier>(m_brain, m_bubble, m_voice,
+                                                              [this] { return bubblePlacement(); });
+    connect(&m_updates, &UpdateChecker::updateAvailable, this, &CatApp::onUpdateAvailable);
+
     // 오버레이 → Shift 잡기 / 트레이 (버튼을 덮은 고양이 클릭)
     connect(&m_overlay, &CatOverlay::clicked, this, &CatApp::onCatPressed);
     connect(&m_overlay, &CatOverlay::released, this, [this] {
@@ -252,6 +260,7 @@ void CatApp::setScale(int scale)
     m_planner.setScale(m_scale);
     m_brain.setScale(m_scale);
     m_tray.setScale(m_scale);
+    m_bubble.setScale(m_scale);
     m_haveImage = false;
     if (m_tickTimer.isActive())
         m_scanner.scanNow();   // 최소 세그먼트 길이 등이 바뀌므로 즉시 다시 스캔
@@ -324,6 +333,21 @@ void CatApp::start()
 
     m_lastTravelledPx = m_body.travelledPx();   // spawn 이후 값부터 차이를 센다
     m_statsSaveTimer.start();
+
+    m_updates.start(QStringLiteral(CCAT_VERSION));   // Config::kUpdateCheckDelayMs 뒤 1회
+}
+
+void CatApp::onUpdateAvailable(const QString &version)
+{
+    m_updateNotifier->notify(version, QStringLiteral(CCAT_VERSION), [version](UpdateChoice choice) {
+        switch (choice) {
+        case UpdateChoice::OpenPage:
+            QDesktopServices::openUrl(QUrl(QString::fromLatin1(Config::kReleasesPageUrl)));
+            break;
+        case UpdateChoice::Skip: UpdateChecker::skipVersion(version); break;
+        case UpdateChoice::Later: break;
+        }
+    });
 }
 
 void CatApp::onSnapshot(const DesktopSnapshot &snapshot)
@@ -332,6 +356,8 @@ void CatApp::onSnapshot(const DesktopSnapshot &snapshot)
     m_brain.onSnapshot(snapshot);
     m_tray.updateSnapshot(snapshot);
     m_overlay.ensureTopmost();
+    if (m_bubble.isVisible())
+        m_bubble.ensureTopmost();
 }
 
 void CatApp::tick()
@@ -380,7 +406,36 @@ void CatApp::render()
     if (f.anchor != m_lastAnchor) {
         m_overlay.setFrame(m_image, f.anchor, f.gravity);
         m_lastAnchor = f.anchor;
+        if (m_bubble.isVisible()) {   // 앉은 창이 움직이면 말풍선도 따라간다
+            const BubblePlacement p = bubblePlacement();
+            m_bubble.follow(p.catRect, p.gravity, p.monitor);
+        }
     }
+}
+
+BubblePlacement CatApp::bubblePlacement() const
+{
+    // 오버레이 창 왼쪽 위부터 회전된 이미지가 그려진다 (CatOverlay::place)
+    const CatFrame f = m_body.frame();
+    const QPoint topLeft = f.anchor - CatSprite::anchorIn(f.gravity) * m_scale;
+    BubblePlacement p;
+    p.catRect = QRect(topLeft, m_image.size() * m_scale);
+    p.gravity = f.gravity;
+    // 앵커는 면 위(바닥이면 모니터 아래 경계 = bottom()+1)에 있어 contains 로는 모니터를 못 찾을 수 있다 → 그림 중심으로 찾는다
+    const QPoint at = p.catRect.center();
+    for (const MonitorInfo &m : m_scanner.snapshot().monitors) {
+        if (m.bounds.contains(at)) {
+            p.monitor = m.bounds;
+            break;
+        }
+    }
+    if (p.monitor.isNull()) {
+        const QScreen *screen = QGuiApplication::screenAt(at);
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        p.monitor = screen ? screen->geometry() : p.catRect;
+    }
+    return p;
 }
 
 // ── 통계 (README 5.14) ───────────────────────────────────
