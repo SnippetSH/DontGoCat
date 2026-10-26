@@ -210,6 +210,7 @@ void CatBrain::beginIntent(State s, const char *why)
     m_pokeArmed = false;
     m_wanderLegs.clear();
     m_act = AutoAct::None;
+    m_startling = false;
     noteSleepEnded();   // sleep 루프 중이었다면 재취침 금지 시작 (m_sleeping 도 내린다)
     m_sleeping = false;
 }
@@ -471,8 +472,11 @@ void CatBrain::releaseGrab()
 bool CatBrain::updateFalling()
 {
     // 경로의 Jump / WalkOff 로 공중에 있는 것은 정상. 그 밖의 공중 상태(발판 소실 등)가 Falling
+    // 장난 중 놀라 뛴 점프도 정상 (착지하면 플래그를 내린다)
     const bool air = m_body.mode() == Locomotion::Mode::Airborne;
-    const bool falling = air && !(m_route.active && m_routeAirOk);
+    if (!air)
+        m_startling = false;
+    const bool falling = air && !(m_route.active && m_routeAirOk) && !m_startling;
     if (falling) {
         if (!m_falling) {
             m_falling = true;
@@ -524,14 +528,18 @@ void CatBrain::tick(qint64 nowMs)
 
 void CatBrain::onUserMoved(QPoint pos)
 {
+    const QPoint from = m_cursor;
     m_cursor = pos;
     m_cursorKnown = true;
     m_cursorChangedMs = m_now;
     m_idlePending = false;
     // 잡혀 있을 때는 커서가 움직이는 게 당연하므로 건드리지 않는다 (stop() 이 잡기를 풀어 버림). 놓이면 restartIntent 가 Autonomous 로
     if (m_intent == State::MousePlay && m_body.mode() != Locomotion::Mode::Held) {
+        const bool startled = m_playClockOn;   // 커서 근처에서 놀던 중이면 놀라 달아난다
         m_body.stop();   // 즉시 중단 → idle
         enterAutonomous("user moved");
+        if (startled)
+            startle(from, pos);
     }
 }
 
@@ -616,8 +624,8 @@ void CatBrain::abandonBlock(const char *why)
 
 QRect CatBrain::trackRegion() const
 {
-    const QRect base = m_popupRect.isNull() ? m_buttonRect : m_buttonRect.united(m_popupRect);
-    return base.adjusted(-Config::kGuardTrackMarginPx, -Config::kGuardTrackMarginPx,
+    // 종료 버튼 주변만 (팝업 전체를 쓰면 통계를 펼쳤을 때 버튼과 먼 곳에서도 따라온다)
+    return m_buttonRect.adjusted(-Config::kGuardTrackMarginPx, -Config::kGuardTrackMarginPx,
                          Config::kGuardTrackMarginPx, Config::kGuardTrackMarginPx);
 }
 
@@ -859,7 +867,8 @@ bool CatBrain::tryStartMousePlay()
     }
     beginIntent(State::MousePlay, "cursor idle and reachable");
     m_playPhase = PlayPhase::Approach;
-    m_playStartMs = m_now;
+    m_playClockOn = false;   // 장난 시간은 커서 근처에 든 순간부터 (startPlayClock)
+    m_playGoalSurface = goal->surface;
     m_drift = QPoint();
     if (const std::optional<QPoint> p = m_snapshot.resolve(*goal)) {
         const SurfaceSegment *seg = segmentOf(*goal);
@@ -869,9 +878,18 @@ bool CatBrain::tryStartMousePlay()
     return true;
 }
 
+void CatBrain::startPlayClock(const char *why)
+{
+    if (m_playClockOn)
+        return;
+    m_playClockOn = true;
+    m_playStartMs = m_now;
+    qCInfo(lcBrain) << "play: clock started -" << why;
+}
+
 void CatBrain::runMousePlay()
 {
-    if (m_now - m_playStartMs > Config::kPlayMaxMs) {
+    if (m_playClockOn && m_now - m_playStartMs > Config::kPlayMaxMs) {
         enterAutonomous("play timeout");
         return;
     }
@@ -879,12 +897,22 @@ void CatBrain::runMousePlay()
     switch (m_playPhase) {
     case PlayPhase::Approach: {
         const RouteStatus st = stepRoute();
+        // 목표 면 위에서 커서와의 면 방향 거리가 kPlayNearSpritePx 안이면 장난 시간 시작
+        const std::optional<SurfacePoint> att = m_body.attachment();
+        if (att && att->surface == m_playGoalSurface) {
+            const bool floor = att->surface.kind == SurfaceKind::Floor;
+            const QPoint me = m_body.anchor();
+            const int d = floor ? std::abs(me.x() - m_cursor.x()) : std::abs(me.y() - m_cursor.y());
+            if (d <= px(Config::kPlayNearSpritePx))
+                startPlayClock("near cursor");
+        }
         if (st == RouteStatus::Running)
             return;
         if (st != RouteStatus::Arrived) {
             enterAutonomous("play target unreachable");
             return;
         }
+        startPlayClock("arrived");
         qCInfo(lcBrain) << "play: arrived, crouch";
         m_body.faceToward(m_cursor);
         m_body.play(CatAnim::Crouch);
@@ -920,6 +948,29 @@ void CatBrain::runMousePlay()
             finishPlayAction();
         return;
     }
+}
+
+bool CatBrain::startle(QPoint from, QPoint to)
+{
+    // 바닥 위에서만: 커서가 움직인 반대 방향으로 같은 바닥 위를 kStartleMin..MaxSpritePx 뛴다.
+    // 거의 수직 이동이면 커서 반대편으로. 바닥 끝에 막히면 끝까지만 (공간이 없으면 제자리 뛰기)
+    const SurfaceSegment *seg = bodySegment();
+    if (!seg || seg->id.kind != SurfaceKind::Floor)
+        return false;
+    const int dx = to.x() - from.x();
+    const int dy = to.y() - from.y();
+    const int cur = m_body.anchor().x();
+    int dir;
+    if (dx != 0 && std::abs(dy) <= std::abs(dx) * Config::kStartleVerticalRatio)
+        dir = dx > 0 ? -1 : 1;
+    else
+        dir = to.x() > cur ? -1 : (to.x() < cur ? 1 : (randBetween(0, 1) == 0 ? -1 : 1));
+    const int dist = px(randBetween(Config::kStartleMinSpritePx, Config::kStartleMaxSpritePx));
+    const int along = std::clamp(cur + dir * dist, seg->a, seg->b - 1);
+    qCInfo(lcBrain) << "startled: jump" << (dir < 0 ? "left" : "right") << "to x" << along;
+    m_body.jumpTo(Locomotion::pointOn(*seg, along));
+    m_startling = m_body.mode() == Locomotion::Mode::Airborne;
+    return m_startling;
 }
 
 void CatBrain::finishPlayAction()

@@ -255,7 +255,7 @@ static void testQuitBlock()
     const QRect popup(1610, 900, 190, 140);   // bottom touches 1040
     const QRect button(1657, 1016, 96, 24);   // bottom = 1040
     sim.brain.setPopupRect(popup);
-    sim.brain.onUserMoved(QPoint(1700, 960));
+    sim.brain.onUserMoved(QPoint(1700, 990));
     sim.brain.onBlockRequested(button);
     CHECK(sim.brain.state() == CatBrain::State::QuitBlock, "state");
     sim.animsSeen.clear();
@@ -265,18 +265,18 @@ static void testQuitBlock()
           "arrived at button center x=%d", sim.body.anchor().x());
     CHECK(sim.animsSeen.count(CatAnim::Run), "ran to the button");
 
-    sim.brain.onUserMoved(QPoint(1680, 950));
+    sim.brain.onUserMoved(QPoint(1680, 990));
     sim.run(900);
     int x1 = sim.body.anchor().x();
     std::printf("  cursor 1680 -> cat x %d anim %d\n", x1, int(sim.body.frame().anim));
     CHECK(std::abs(x1 - 1680) <= 3, "tracks cursor x");
     CHECK(sim.body.frame().anim == CatAnim::Crouch, "settled crouch (anim %d)", int(sim.body.frame().anim));
-    sim.brain.onUserMoved(QPoint(1790, 950));   // clamp to button.right+1+36 = 1790
+    sim.brain.onUserMoved(QPoint(1790, 990));   // clamp to button.right+1+36 = 1790
     sim.run(32);
     CHECK(sim.body.frame().anim == CatAnim::Run, "dashing again on cursor move (anim %d)", int(sim.body.frame().anim));
     sim.run(900);
     CHECK(std::abs(sim.body.anchor().x() - 1790) <= 3, "clamped x=%d", sim.body.anchor().x());
-    sim.brain.onUserMoved(QPoint(1790, 600));   // y far above region (popup top 900-48=852)
+    sim.brain.onUserMoved(QPoint(1790, 600));   // y far above region (button top 1016-48=968)
     sim.until([&] { return std::abs(sim.body.anchor().x() - 1705) <= 3 && !sim.body.isBusy(); }, 8000);
     sim.run(300);
     std::printf("  outside region: cat x %d anim %d facing %d\n", sim.body.anchor().x(), int(sim.body.frame().anim),
@@ -285,7 +285,7 @@ static void testQuitBlock()
     CHECK(sim.body.frame().anim == CatAnim::Sit, "sits");
     CHECK(sim.body.frame().facing == CatFacing::Right, "faces cursor");
 
-    sim.brain.onUserMoved(QPoint(1700, 960));
+    sim.brain.onUserMoved(QPoint(1700, 990));
     sim.run(700);
     sim.animsSeen.clear();
     sim.brain.onBlockReact();
@@ -361,7 +361,7 @@ static void testBlockApproach()
         Sim sim(fullSnap());
         sim.spawnAt(QPoint(500, kFloorY));
         sim.brain.setPopupRect(QRect(1610, 900, 190, 140));
-        sim.brain.onUserMoved(QPoint(1700, 960));
+        sim.brain.onUserMoved(QPoint(1700, 990));
         sim.brain.onBlockRequested(button);
         int maxTickPx = 0;
         const bool arrived = sim.until([&] {
@@ -389,7 +389,7 @@ static void testBlockApproach()
                 ev.push_back({sim.t, sim.body.anchor().x()});
         };
         sim.brain.setPopupRect(QRect(1610, 900, 190, 140));
-        sim.brain.onUserMoved(QPoint(1700, 960));
+        sim.brain.onUserMoved(QPoint(1700, 990));
         sim.brain.onBlockRequested(button);
         int prevX = sim.body.anchor().x();
         const bool arrived = sim.until([&] {
@@ -557,6 +557,96 @@ static void testMousePlay()
     s4.run(500);
     CHECK(s4.brain.state() == CatBrain::State::MousePlay, "pending idle evaluated after tray (%s)", stName(s4.brain.state()));
 
+}
+
+// 4b. play clock (starts near cursor) / startle on user move
+static void testPlayStartle()
+{
+    std::printf("[4b] play clock / startle\n");
+    const QPoint cur(1000, kFloorY - 40);
+    auto startPlay = [&](Sim &s) {
+        s.spawnAt(QPoint(1500, kFloorY));
+        s.brain.onUserMoved(cur);
+        s.run(200);
+        s.brain.onMouseIdle(cur);
+        return s.until([&] { return s.brain.state() == CatBrain::State::MousePlay; }, 60000);
+    };
+
+    // 접근(걷기) 시간은 60초에 넣지 않는다: 커서 근처에 든 순간부터 kPlayMaxMs
+    {
+        g_log.clear();
+        Sim s(fullSnap());
+        CHECK(startPlay(s), "play started");
+        const qint64 t0 = s.t;
+        CHECK(logCount("play: clock started") == 0, "clock not started at approach start");
+        CHECK(s.until([&] { return logCount("play: clock started") > 0; }, 60000), "clock started while approaching");
+        const qint64 tClock = s.t;
+        const int d = std::abs(s.body.anchor().x() - cur.x());
+        std::printf("  approach %lld ms, clock at dx %d\n", tClock - t0, d);
+        CHECK(tClock - t0 > 1000, "approach took a while (%lld ms)", tClock - t0);
+        CHECK(d <= Config::kPlayNearSpritePx * 3, "clock starts within near radius (dx %d)", d);
+        s.until([&] { return s.brain.state() != CatBrain::State::MousePlay; }, Config::kPlayMaxMs - 1000);
+        CHECK(s.brain.state() == CatBrain::State::MousePlay, "still playing 59 s after clock start (%s)", stName(s.brain.state()));
+        CHECK(s.until([&] { return s.brain.state() != CatBrain::State::MousePlay; }, 2000), "timeout ~60 s after clock start");
+        CHECK(logCount("play timeout") == 1, "ended by play timeout");
+    }
+
+    // 접근 중(시간 시작 전) 움직이면 놀라지 않고 그냥 멈춘다
+    {
+        g_log.clear();
+        Sim s(fullSnap());
+        CHECK(startPlay(s), "play started (approach move)");
+        s.brain.onUserMoved(cur + QPoint(30, 0));
+        CHECK(s.brain.state() == CatBrain::State::Autonomous, "stopped on move during approach");
+        CHECK(logCount("startled") == 0 && s.body.mode() == Locomotion::Mode::Attached, "no startle during approach");
+    }
+
+    // 장난 중 오른쪽으로 움직이면 왼쪽으로 뛰어 달아난다 (Falling 아님, 같은 바닥에 착지)
+    auto startleCase = [&](QPoint move, int expectDir, const char *label) {
+        g_log.clear();
+        Sim s(fullSnap());
+        CHECK(startPlay(s), "play started (%s)", label);
+        CHECK(s.until([&] { return s.body.frame().anim == CatAnim::Crouch && !s.body.isBusy(); }, 60000), "crouching (%s)", label);
+        s.run(3000);
+        s.until([&] { return s.body.mode() == Locomotion::Mode::Attached; }, 2000);
+        const int x0 = s.body.anchor().x();
+        const SurfaceId floor0 = s.body.attachment()->surface;
+        const SurfaceSegment *seg0 = s.snap.findSegment(floor0, x0);
+        if (expectDir == 0)   // 수직 이동: 커서 반대편
+            expectDir = x0 > (cur + move).x() ? 1 : -1;
+        s.brain.onUserMoved(cur + move);
+        CHECK(s.brain.state() == CatBrain::State::Autonomous, "autonomous after startle (%s)", label);
+        CHECK(logCount("startled") == 1 && s.body.mode() == Locomotion::Mode::Airborne, "startle jump (%s)", label);
+        CHECK(s.until([&] { return s.body.mode() == Locomotion::Mode::Attached; }, 3000), "landed (%s)", label);
+        const int moved = s.body.anchor().x() - x0;
+        std::printf("  %s: x %d -> %d\n", label, x0, s.body.anchor().x());
+        // 바닥 끝에 막히면 끝까지만
+        const int room = seg0 ? (expectDir > 0 ? seg0->b - 1 - x0 : x0 - seg0->a) : 0;
+        const int minMove = (std::min)(Config::kStartleMinSpritePx * 3, room) - 3;
+        CHECK(moved * expectDir >= minMove && moved * expectDir <= Config::kStartleMaxSpritePx * 3 + 3,
+              "jumped %d px the expected way (room %d) (%s)", moved, room, label);
+        CHECK(s.body.attachment() && s.body.attachment()->surface == floor0, "landed on same floor (%s)", label);
+        CHECK(logCount("-> Falling") == 0, "startle is not a fall (%s)", label);
+        s.run(5000);
+        CHECK(s.brain.state() == CatBrain::State::Autonomous, "back to autonomous (%s)", label);
+    };
+    startleCase(QPoint(40, 5), -1, "move right");
+    startleCase(QPoint(-40, -5), 1, "move left");
+    // 거의 수직 이동 → 커서 반대편 (고양이는 커서 오른쪽에서 다가와 서 있다)
+    startleCase(QPoint(1, -60), 0, "move up");
+
+    // 벽 위 장난은 놀라지 않고 멈추기만
+    {
+        g_log.clear();
+        Sim s(fullSnap());
+        s.spawnAt(QPoint(1500, kFloorY));
+        const QPoint wc(300 - 40, 700);
+        s.brain.onMouseIdle(wc);
+        CHECK(s.until([&] { return s.body.frame().anim == CatAnim::Crouch && s.body.attachment() && s.body.attachment()->surface.kind == SurfaceKind::WallLeftSide; }, 90000),
+              "on wall beside cursor");
+        s.brain.onUserMoved(wc + QPoint(40, 0));
+        CHECK(s.brain.state() == CatBrain::State::Autonomous && logCount("startled") == 0, "no startle on wall");
+    }
 }
 
 // 5. hidden / falling
@@ -929,6 +1019,7 @@ int main(int argc, char **argv)
     testQuitBlock();
     testBlockApproach();
     testMousePlay();
+    testPlayStartle();
     testSleep();
     testHiddenFalling();
     testGrabbed();

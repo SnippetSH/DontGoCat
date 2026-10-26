@@ -61,7 +61,7 @@ inline constexpr int kDashFacingDeadbandSpritePx = 2; // 목표까지 이보다 
 // 종료 방해 (CatBrain QuitBlock, QuitPopup)
 inline constexpr int kQuitButtonW = 64;               // 종료 버튼 고정 크기 (물리 px, 모든 배율 공통 = 32×8 스프라이트 px 의 2x)
 inline constexpr int kQuitButtonH = 16;
-inline constexpr int kGuardTrackMarginPx = 48;        // 팝업 사각형 확장폭 = 커서 추적 영역
+inline constexpr int kGuardTrackMarginPx = 48;        // 종료 버튼 사각형 확장폭 = 커서 추적 영역
 inline constexpr int kGuardSettleMs = 400;            // 커서가 이 시간 멈추면 crouch
 inline constexpr int kBodyHalfWidthSpritePx = 12;     // 서 있는 몸 반폭 (추적 목표 x 를 버튼 좌우 끝 ± 이만큼으로 제한)
 inline constexpr int kGuardTrackDeadbandSpritePx = 1; // 추적 목표와 이보다 가까우면 새로 대시하지 않음 (crouch 유지)
@@ -102,7 +102,11 @@ inline constexpr int kPawHitFrame = 2;                // paw_swipe 에서 앞발
 inline constexpr int kPlayCrouchMs = 1000;            // 도착 후 처음 crouch 시간
 inline constexpr int kPlayPauseMinMs = 400;           // 장난 사이 crouch 휴지
 inline constexpr int kPlayPauseMaxMs = 1200;
-inline constexpr int kPlayMaxMs = 60000;              // 장난 한 판 최대 시간 (커서가 계속 멈춰 있어도 이후 자율 행동으로)
+inline constexpr int kPlayMaxMs = 60000;              // 장난 한 판 최대 시간 (커서가 계속 멈춰 있어도 이후 자율 행동으로). kPlayNearSpritePx 안에 든 순간부터 잰다
+inline constexpr int kPlayNearSpritePx = 30;          // 목표 면 위에서 커서와의 면 방향 거리가 이 안이면 장난 시간 시작 (먼저 도착하면 도착 순간)
+inline constexpr int kStartleMinSpritePx = 40;        // 장난 중 커서가 움직이면 반대 방향으로 이만큼 뛰어 달아난다 (바닥 전용)
+inline constexpr int kStartleMaxSpritePx = 60;
+inline constexpr int kStartleVerticalRatio = 3;       // |dy| > |dx| × 이 값이면 수직 이동으로 보고 커서 반대편으로 뛴다
 inline constexpr int kPlayWeightPoke = 50;            // 장난 종류 가중치
 inline constexpr int kPlayWeightWander = 30;
 inline constexpr int kPlayWeightRoll = 20;            // 벽 위에서는 제외

@@ -47,7 +47,7 @@ public:
     void onSnapshot(const DesktopSnapshot &snapshot);
     void tick(qint64 nowMs);
 
-    // 종료 팝업 전체 사각형 (QuitBlock 의 커서 추적 영역 기준). null 이면 버튼 사각형을 쓴다
+    // 종료 팝업 전체 사각형 (추적 영역은 버튼 사각형만 쓰므로 현재 판정에는 쓰이지 않는다)
     void setPopupRect(const QRect &popup);
 
     // 현재 유효한 상태 (Hidden / Falling 이 의도보다 우선)
@@ -138,6 +138,8 @@ private:
     bool tryStartMousePlay();
     std::optional<SurfacePoint> findPlayGoal() const;
     void runMousePlay();
+    void startPlayClock(const char *why);
+    bool startle(QPoint from, QPoint to);
     void startPlayAction();
     void finishPlayAction();
     void doNudge();
@@ -185,7 +187,9 @@ private:
 
     // MousePlay
     PlayPhase m_playPhase = PlayPhase::Approach;
-    qint64 m_playStartMs = 0;
+    qint64 m_playStartMs = 0;        // 장난 시간 시작 시각 (m_playClockOn 일 때만 의미)
+    bool m_playClockOn = false;      // 커서 근처(kPlayNearSpritePx)에 들었거나 도착했다
+    SurfaceId m_playGoalSurface;
     qint64 m_playEndMs = 0;          // Crouch(휴지) / Roll 종료 시각
     bool m_pokeArmed = false;
     QPoint m_drift;                  // 누적 nudge
@@ -196,6 +200,7 @@ private:
     AutoAct m_act = AutoAct::None;
     qint64 m_actEndMs = 0;
     bool m_sleeping = false;         // Sleep: sit 이 끝나고 sleep 루프에 들어갔는가
+    bool m_startling = false;        // 장난 중 놀라 뛴 점프로 공중에 있다 (Falling 이 아님)
 
     // 수면 (README 5.9.1)
     bool updateSleep();              // sleep 루프 중 기상 판정. true = 깼다 (act 종료)
