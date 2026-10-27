@@ -43,13 +43,21 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl,custom_ko.isl"
 
 [CustomMessages]
 english.DeleteUserData=Also delete DontGoCat statistics and settings (scale, sound)?
+english.EnableLog=Save a diagnostic log (DontGoCat.log) next to the program
 ; The Korean text lives in custom_ko.isl (UTF-8 with BOM) to keep this file ASCII-only.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "enablelog"; Description: "{cm:EnableLog}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\DontGoCat\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\DontGoCat\*"; DestDir: "{app}"; Excludes: "settings.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Default settings.txt only when missing, so a user's edited file survives upgrades.
+Source: "..\dist\DontGoCat\settings.txt"; DestDir: "{app}"; Flags: onlyifdoesntexist
+
+[UninstallDelete]
+Type: files; Name: "{app}\DontGoCat.log"
+Type: files; Name: "{app}\settings.txt"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -103,6 +111,44 @@ begin
   Result := '';
 end;
 
+// The "enablelog" checkbox writes the same {app}\settings.txt the app reads at startup (enable-log: true|false).
+// Replaces the first non-comment enable-log line, appends one if missing, creates the file if it does not exist.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Path, NewLine, Trimmed: String;
+  Lines: TArrayOfString;
+  I, Count: Integer;
+  Found: Boolean;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  Path := ExpandConstant('{app}\settings.txt');
+  if WizardIsTaskSelected('enablelog') then
+    NewLine := 'enable-log: true'
+  else
+    NewLine := 'enable-log: false';
+  if not LoadStringsFromFile(Path, Lines) then
+    SetArrayLength(Lines, 0);
+  Found := False;
+  Count := GetArrayLength(Lines);
+  for I := 0 to Count - 1 do
+  begin
+    Trimmed := Lowercase(Trim(Lines[I]));
+    if (Pos('enable-log', Trimmed) = 1) then
+    begin
+      Lines[I] := NewLine;
+      Found := True;
+      Break;
+    end;
+  end;
+  if not Found then
+  begin
+    SetArrayLength(Lines, Count + 1);
+    Lines[Count] := NewLine;
+  end;
+  SaveStringsToFile(Path, Lines, False);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
@@ -111,9 +157,14 @@ begin
     // The tray popup (not the installer) creates this value, so [Registry] uninsdeletevalue cannot remove it.
     RegDeleteValue(HKEY_CURRENT_USER, '{#RunKey}', 'DontGoCat');
     // Statistics and settings (scale, sound) live in HKCU\{#UserDataKey}. Updates keep them; ask on uninstall only.
+    // The fallback log in %LOCALAPPDATA%\DontGoCat goes too (used when the program folder is not writable).
     // Silent uninstalls never ask and keep the data. Default button is No.
     if not UninstallSilent then
       if MsgBox(CustomMessage('DeleteUserData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      begin
         RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, '{#UserDataKey}');
+        DeleteFile(ExpandConstant('{localappdata}\DontGoCat\DontGoCat.log'));
+        RemoveDir(ExpandConstant('{localappdata}\DontGoCat'));   // only succeeds when empty
+      end;
   end;
 end;

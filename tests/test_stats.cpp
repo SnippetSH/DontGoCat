@@ -162,6 +162,62 @@ static void testFormat()
     CHECK(CatStats::formatRate(3, 3) == "100%", "100%");
 }
 
+// 누적은 줄지 않는다: 저장값이 더 크면 받아들이고(ahead), 바깥에서 되돌려졌으면 감지해 메모리 값으로 다시 쓴다(behind)
+static void testMerge(const QString &dir)
+{
+    std::printf("[merge]\n");
+    const QString path = dir + "/c.ini";
+    const auto stored = [&path](const char *key) {
+        QSettings s(path, QSettings::IniFormat);
+        return s.value(QStringLiteral("%1/%2").arg(Config::kSettingsStatsGroup, key));
+    };
+    const auto put = [&path](const char *key, const QVariant &v) {
+        QSettings s(path, QSettings::IniFormat);
+        s.setValue(QStringLiteral("%1/%2").arg(Config::kSettingsStatsGroup, key), v);
+    };
+
+    put("runMs", 1000);
+    put("nudges", 3);
+    put("since", "2026-10-11");
+    QSettings s(path, QSettings::IniFormat);
+    CatStats st;
+    st.load(s);
+    st.addRunMs(500);
+    st.addNudge();
+    CatStatsSaveResult r = st.save(s);
+    s.sync();
+    CHECK(r.ahead.isEmpty() && r.behind.isEmpty(), "normal save reports nothing");
+    CHECK(stored("runMs").toLongLong() == 1500 && stored("nudges").toInt() == 4, "normal save writes memory");
+
+    // 바깥에서 되돌림 (이번 사건): 저장값이 마지막으로 쓴 값보다 작다 → behind, 메모리 값으로 다시 쓴다
+    put("runMs", 200);
+    put("nudges", 1);
+    s.sync();
+    st.addRunMs(10);
+    r = st.save(s);
+    s.sync();
+    CHECK(r.behind.contains("runMs") && r.behind.contains("nudges") && r.ahead.isEmpty(), "rollback detected: %s",
+          r.behind.join(",").toStdString().c_str());
+    CHECK(r.lastRunMs == 1500 && r.storedRunMs == 200, "runMs last %lld stored %lld", r.lastRunMs, r.storedRunMs);
+    CHECK(stored("runMs").toLongLong() == 1510 && stored("nudges").toInt() == 4, "rewritten from memory");
+
+    // 저장값이 더 크다 (다른 무언가가 키움): 받아들여 누적에 반영, 줄여 쓰지 않는다
+    put("runMs", 99999);
+    put("grabs", 7);
+    put("since", "2026-01-01");
+    s.sync();
+    r = st.save(s);
+    s.sync();
+    CHECK(r.ahead.contains("runMs") && r.ahead.contains("grabs") && r.ahead.contains("since"), "ahead: %s",
+          r.ahead.join(",").toStdString().c_str());
+    CHECK(st.total().runMs == 99999 && st.total().grabs == 7 && st.since() == QDate(2026, 1, 1), "memory adopts larger");
+    CHECK(st.session().runMs == 510 && st.session().grabs == 0, "session untouched");
+    CHECK(stored("runMs").toLongLong() == 99999 && stored("since").toString() == "2026-01-01", "larger kept in store");
+    st.addRunMs(1);
+    r = st.save(s);
+    CHECK(r.ahead.isEmpty() && r.behind.isEmpty() && st.total().runMs == 100000, "continues from adopted value");
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -171,6 +227,7 @@ int main(int argc, char **argv)
     testAdd();
     testPersist(dir.path());
     testSince(dir.path());
+    testMerge(dir.path());
     testFormat();
     return testing::testResult("test_stats");
 }

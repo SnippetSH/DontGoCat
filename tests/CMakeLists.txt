@@ -38,6 +38,9 @@ ccat_add_test(test_popup test_popup.cpp GUI LIBS ccat_ui)
 # CatStats 누적/세션 합산, QSettings 저장·복원(임시 INI), 표시 형식
 ccat_add_test(test_stats test_stats.cpp LIBS ccat_ui)
 
+# settings.txt 파싱 (enable-log) + FileLogger 파일 기록 (임시 디렉터리)
+ccat_add_test(test_settings test_settings.cpp LIBS ccat_ui)
+
 # DPI 다른 모니터 사이 이동 시 고정 크기 창 유지 (CatOverlay / QuitPopup / DpiSizeLock). 실제 Windows 플랫폼으로 숨긴 네이티브 창만 사용 (GUI 플래그 없음)
 ccat_add_test(test_dpi test_dpi.cpp LIBS ccat_ui)
 

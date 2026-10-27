@@ -69,6 +69,9 @@ copy /y "%ROOT%\THIRD_PARTY_NOTICES.txt" "%APP_DIR%\THIRD_PARTY_NOTICES.txt" >nu
 mkdir "%APP_DIR%\licenses" || goto :fail
 copy /y "%ROOT%\licenses\Qt-LGPL-3.0-GPL-3.0.txt" "%APP_DIR%\licenses\Qt-LGPL-3.0-GPL-3.0.txt" >nul || goto :fail
 
+rem settings.txt (enable-log). Portable users edit it; the installer rewrites enable-log from its checkbox
+copy /y "%ROOT%\installer\settings.txt" "%APP_DIR%\settings.txt" >nul || goto :fail
+
 echo [3/5] Portable zip
 set "ZIP=%DIST%\DontGoCat-%VERSION%-portable.zip"
 if exist "%ZIP%" del /q "%ZIP%"

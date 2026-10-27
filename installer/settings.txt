@@ -1,0 +1,7 @@
+# DontGoCat settings. Edit with a text editor, then restart DontGoCat.
+# Lines starting with '#' are comments.
+
+# enable-log: true  -> write DontGoCat.log next to DontGoCat.exe (recreated on every start).
+#                      If that folder is not writable: %LOCALAPPDATA%\DontGoCat\DontGoCat.log
+# enable-log: false -> no log file.
+enable-log: false

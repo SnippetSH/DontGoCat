@@ -30,12 +30,18 @@ double readMeters(const QSettings &s, const char *key)
     return (ok && v > 0.0 && std::isfinite(v)) ? v : 0.0;
 }
 
-}   // namespace
+// 그룹 안의 누적 값 + since (없거나 틀린 값은 0 / 무효 날짜)
+struct StoredStats
+{
+    CatStatsValues values;
+    QDate since;
+};
 
-void CatStats::load(QSettings &settings)
+StoredStats readStored(QSettings &settings)
 {
     settings.beginGroup(QLatin1String(Config::kSettingsStatsGroup));
-    CatStatsValues t;
+    StoredStats st;
+    CatStatsValues &t = st.values;
     t.runMs = readCount(settings, "runMs");
     t.roamMs = readCount(settings, "roamMs");
     t.sleepMs = readCount(settings, "sleepMs");
@@ -47,16 +53,58 @@ void CatStats::load(QSettings &settings)
     t.jumps = int(std::min<qint64>(readCount(settings, "jumps"), INT_MAX));
     t.falls = int(std::min<qint64>(readCount(settings, "falls"), INT_MAX));
     t.distanceM = readMeters(settings, "distanceM");
-    const QDate since = QDate::fromString(settings.value(QLatin1String("since")).toString(), Qt::ISODate);
+    st.since = QDate::fromString(settings.value(QLatin1String("since")).toString(), Qt::ISODate);
     settings.endGroup();
-
-    m_total = t;
-    m_session = CatStatsValues{};
-    m_since = since.isValid() ? since : QDate::currentDate();   // 없거나 틀리면 오늘 (다음 save 에 기록)
+    return st;
 }
 
-void CatStats::save(QSettings &settings) const
+}   // namespace
+
+void CatStats::load(QSettings &settings)
 {
+    const StoredStats stored = readStored(settings);
+    m_total = stored.values;
+    m_lastStored = stored.values;
+    m_session = CatStatsValues{};
+    m_since = stored.since.isValid() ? stored.since : QDate::currentDate();   // 없거나 틀리면 오늘 (다음 save 에 기록)
+}
+
+CatStatsSaveResult CatStats::save(QSettings &settings)
+{
+    // 누적은 줄지 않는다: 저장된 값이 메모리보다 크면(다른 무언가가 바꿨다) 그 값을 받아들인다.
+    // 오래된 값으로 덮어써 통계가 되돌아가는 것을 막는다. since 는 더 이른 날짜를 따른다.
+    const StoredStats stored = readStored(settings);
+    CatStatsSaveResult result;
+    // ahead : 저장값이 메모리보다 크다 → 받아들인다
+    // behind: 저장값이 이 객체가 마지막으로 읽거나 쓴 값보다 작다 → 바깥에서 되돌려졌다 (메모리 값으로 다시 쓴다)
+    const auto merge = [&result](auto &mine, auto last, auto theirs, const char *key) {
+        if (theirs > mine) {
+            mine = theirs;
+            result.ahead << QLatin1String(key);
+        }
+        if (theirs < last)
+            result.behind << QLatin1String(key);
+    };
+    const CatStatsValues &st = stored.values;
+    const CatStatsValues &last = m_lastStored;
+    merge(m_total.runMs, last.runMs, st.runMs, "runMs");
+    merge(m_total.roamMs, last.roamMs, st.roamMs, "roamMs");
+    merge(m_total.sleepMs, last.sleepMs, st.sleepMs, "sleepMs");
+    merge(m_total.playMs, last.playMs, st.playMs, "playMs");
+    merge(m_total.nudges, last.nudges, st.nudges, "nudges");
+    merge(m_total.quitAttempts, last.quitAttempts, st.quitAttempts, "quitAttempts");
+    merge(m_total.quitBlocks, last.quitBlocks, st.quitBlocks, "quitBlocks");
+    merge(m_total.grabs, last.grabs, st.grabs, "grabs");
+    merge(m_total.jumps, last.jumps, st.jumps, "jumps");
+    merge(m_total.falls, last.falls, st.falls, "falls");
+    merge(m_total.distanceM, last.distanceM, st.distanceM, "distanceM");
+    if (stored.since.isValid() && (!m_since.isValid() || stored.since < m_since)) {
+        m_since = stored.since;
+        result.ahead << QStringLiteral("since");
+    }
+    result.storedRunMs = st.runMs;
+    result.lastRunMs = last.runMs;
+
     settings.beginGroup(QLatin1String(Config::kSettingsStatsGroup));
     settings.setValue(QLatin1String("since"), (m_since.isValid() ? m_since : QDate::currentDate()).toString(Qt::ISODate));
     settings.setValue(QLatin1String("runMs"), m_total.runMs);
@@ -71,6 +119,8 @@ void CatStats::save(QSettings &settings) const
     settings.setValue(QLatin1String("falls"), m_total.falls);
     settings.setValue(QLatin1String("distanceM"), m_total.distanceM);
     settings.endGroup();
+    m_lastStored = m_total;
+    return result;
 }
 
 void CatStats::addRunMs(qint64 ms) { m_total.runMs += ms; m_session.runMs += ms; }

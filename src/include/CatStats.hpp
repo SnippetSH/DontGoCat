@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QString>
+#include <QStringList>
 #include <QtGlobal>
 
 class QSettings;
@@ -22,16 +23,26 @@ struct CatStatsValues
     double distanceM = 0.0;    // 걷고 달리고 오른 거리 (모니터 물리 DPI 로 환산한 실제 화면 거리)
 };
 
+// CatStats::save 결과 (로그용). 보통 둘 다 비어 있다
+struct CatStatsSaveResult
+{
+    QStringList ahead;         // 저장값이 메모리보다 커서 받아들인 키 (다른 무언가가 키웠다)
+    QStringList behind;        // 저장값이 마지막으로 읽거나 쓴 값보다 작았던 키 (바깥에서 되돌려졌다)
+    qint64 storedRunMs = 0;    // 저장 직전 저장소의 runMs
+    qint64 lastRunMs = 0;      // 이 객체가 마지막으로 읽거나 쓴 runMs
+};
+
 // 누적(설치 이후) + 이번 실행 통계 (README 5.14).
 // - add*() 는 누적과 이번 실행 양쪽에 더한다.
 // - 누적만 QSettings(Config::kSettingsStatsGroup 그룹)에 저장/복원한다. 이번 실행 값은 저장하지 않는다.
 // - since: 누적 통계를 처음 기록한 날짜 (설정에 없으면 load() 시점의 오늘로 정하고 다음 save() 에 기록)
+// - 누적은 줄지 않는다: save() 는 저장된 값이 메모리보다 크면 그 값을 받아들여(누적에 반영) 저장한다.
 // 순수 데이터 클래스: 타이머/시그널 없음. 저장 시점은 CatApp 이 정한다.
 class CatStats
 {
 public:
     void load(QSettings &settings);          // 누적 값 + since 복원 (그룹은 내부에서 begin/end)
-    void save(QSettings &settings) const;    // 누적 값 + since 기록
+    CatStatsSaveResult save(QSettings &settings);   // 누적 값 + since 기록 (줄지 않게 병합)
 
     void addRunMs(qint64 ms);
     void addRoamMs(qint64 ms);
@@ -57,5 +68,6 @@ public:
 private:
     CatStatsValues m_total;
     CatStatsValues m_session;
+    CatStatsValues m_lastStored;   // 마지막으로 읽거나 쓴 저장값 (되돌려짐 감지)
     QDate m_since;
 };

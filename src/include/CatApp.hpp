@@ -93,6 +93,9 @@ private:
     QTimer m_tickTimer;
     QTimer m_statsSaveTimer;           // Config::kStatsSaveIntervalMs
     double m_lastTravelledPx = 0.0;    // Locomotion::travelledPx() 마지막 값 (차이만 거리로 더한다)
+    // 활동 전환 로그 (ccat.stats): 바뀔 때만 "이전 -> 새 활동, 이전 활동 지속 시간" 한 줄
+    CatBrain::Activity m_lastActivity = CatBrain::Activity::Other;
+    qint64 m_activityMs = 0;           // m_lastActivity 로 쌓인 시간 (updateStats dt 합)
     QTimer m_followTimer;
     QElapsedTimer m_clock;
     qint64 m_lastTickMs = 0;

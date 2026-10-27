@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DontGoCat VERSION 1.4.0 LANGUAGES CXX)
+project(DontGoCat VERSION 1.4.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
@@ -51,6 +51,8 @@ endif()
 
 # ── WP3: 오버레이 / 트레이 / 종료 방해 ────────────────────────
 add_library(ccat_ui STATIC
+    src/include/AppSettingsFile.hpp
+    src/module/AppSettingsFile.cpp
     src/include/AutoStart.hpp
     src/module/AutoStart.cpp
     src/include/CatStats.hpp
@@ -59,6 +61,8 @@ add_library(ccat_ui STATIC
     src/module/CatOverlay.cpp
     src/include/DpiSizeLock.hpp
     src/module/DpiSizeLock.cpp
+    src/include/FileLogger.hpp
+    src/module/FileLogger.cpp
     src/include/QuitGuard.hpp
     src/module/QuitGuard.cpp
     src/include/QuitPopup.hpp
@@ -111,6 +115,7 @@ endif()
 add_executable(ccat WIN32 src/app/main.cpp resources/ccat.qrc)
 target_link_libraries(ccat PRIVATE ccat_core)
 set_target_properties(ccat PROPERTIES OUTPUT_NAME DontGoCat)   # 배포 이름: DontGoCat.exe
+target_compile_definitions(ccat PRIVATE CCAT_VERSION="${PROJECT_VERSION}")   # 로그 첫 줄 버전
 
 if(WIN32)
     # exe 버전 리소스 + 앱 아이콘 (ccat 타깃에만). 버전은 project(DontGoCat VERSION ...) 한 곳에서 온다

@@ -6,6 +6,7 @@
 #include <QCursor>
 #include <QDesktopServices>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QScreen>
 #include <QSettings>
 #include <QUrl>
@@ -17,9 +18,23 @@
 #  include <windows.h>
 #endif
 
+Q_LOGGING_CATEGORY(lcStats, "ccat.stats")
+
 namespace {
 
 constexpr int kSpawnSearchStepPx = 64;   // 주 모니터 중앙에서 좌우로 바닥이 뚫린 지점을 찾는 간격
+
+// 로그용 활동 이름
+const char *activityName(CatBrain::Activity a)
+{
+    switch (a) {
+    case CatBrain::Activity::Roaming: return "Roaming";
+    case CatBrain::Activity::Sleeping: return "Sleeping";
+    case CatBrain::Activity::Playing: return "Playing";
+    case CatBrain::Activity::Other: break;
+    }
+    return "Other";
+}
 
 } // namespace
 
@@ -57,14 +72,17 @@ public:
         if (!msg || !msg->hwnd)
             return false;
         switch (nativeMsgAction(msg->message, static_cast<quint64>(msg->wParam))) {
+        // result 는 null 일 수 있다: Post 된 메시지(taskkill 의 WM_CLOSE)는 Qt 이벤트 디스패처가 result 없이 필터를 부른다
         case NativeMsgAction::QuitSwallow:
-            *result = 0;
+            if (result)
+                *result = 0;
             QCoreApplication::quit();
             return true;
         case NativeMsgAction::HideSwallow:   // Alt+F4 는 종료가 아니라 기존처럼 그 창만 숨긴다 (고양이의 종료 방해, R4)
             if (QWidget *w = QWidget::find(reinterpret_cast<WId>(msg->hwnd)))
                 w->hide();
-            *result = 0;
+            if (result)
+                *result = 0;
             return true;
         case NativeMsgAction::SaveOnly:
             m_app.saveStats();
@@ -179,6 +197,15 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     {
         QSettings settings;
         m_stats.load(settings);
+    }
+    {
+        // 읽어 온 원본 값 (통계가 바깥에서 바뀌었는지 비교하는 기준)
+        const CatStatsValues &t = m_stats.total();
+        qCInfo(lcStats).nospace().noquote() << "loaded total runMs=" << t.runMs << " roamMs=" << t.roamMs
+                                  << " sleepMs=" << t.sleepMs << " playMs=" << t.playMs << " nudges=" << t.nudges
+                                  << " quit=" << t.quitBlocks << '/' << t.quitAttempts << " grabs=" << t.grabs
+                                  << " jumps=" << t.jumps << " falls=" << t.falls << " distanceM=" << t.distanceM
+                                  << " since=" << m_stats.since().toString(Qt::ISODate);
     }
     saveStats();
     m_tray.setStats(&m_stats);
@@ -442,14 +469,34 @@ BubblePlacement CatApp::bubblePlacement() const
 void CatApp::saveStats()
 {
     QSettings settings;
-    m_stats.save(settings);
+    const CatStatsSaveResult r = m_stats.save(settings);
     settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qCWarning(lcStats) << "save failed, status" << settings.status();
+    if (!r.behind.isEmpty())   // 다른 무언가가 저장값을 되돌렸다 (메모리 값으로 다시 썼다)
+        qCWarning(lcStats).noquote() << "stored stats went backwards, rewrote from memory:" << r.behind.join(QStringLiteral(", "))
+                                     << "(runMs last" << r.lastRunMs << "stored" << r.storedRunMs << ")";
+    if (!r.ahead.isEmpty())    // 다른 무언가가 저장값을 키웠다 (누적은 줄지 않으므로 저장값을 따랐다)
+        qCWarning(lcStats).noquote() << "stored stats were ahead of memory, kept stored:" << r.ahead.join(QStringLiteral(", "));
+    const CatStatsValues &t = m_stats.total();
+    qCInfo(lcStats).noquote() << "saved total run" << CatStats::formatDuration(t.runMs)
+                              << "roam" << CatStats::formatDuration(t.roamMs)
+                              << "sleep" << CatStats::formatDuration(t.sleepMs)
+                              << "play" << CatStats::formatDuration(t.playMs);
 }
 
 void CatApp::updateStats(qint64 dtMs)
 {
     m_stats.addRunMs(dtMs);
-    switch (m_brain.activity()) {
+    const CatBrain::Activity activity = m_brain.activity();
+    if (activity != m_lastActivity) {
+        qCInfo(lcStats).noquote() << "activity" << activityName(m_lastActivity) << "->" << activityName(activity)
+                                  << "after" << CatStats::formatDuration(m_activityMs);
+        m_activityMs = 0;
+        m_lastActivity = activity;
+    }
+    m_activityMs += dtMs;
+    switch (activity) {
     case CatBrain::Activity::Roaming: m_stats.addRoamMs(dtMs); break;
     case CatBrain::Activity::Sleeping: m_stats.addSleepMs(dtMs); break;
     case CatBrain::Activity::Playing: m_stats.addPlayMs(dtMs); break;

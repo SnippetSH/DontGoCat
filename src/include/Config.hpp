@@ -158,6 +158,11 @@ inline constexpr const char *kSettingsUpdateSkippedKey = "update/skippedVersion"
 inline constexpr int kUpdateCheckDelayMs = 10000;     // 시작 후 이만큼 뒤에 한 번 확인 (시작 직후 네트워크가 아직 없을 수 있다)
 inline constexpr int kUpdateTimeoutMs = 10000;        // 응답이 이보다 늦으면 포기
 
+// ── 설정 파일 / 로그 (AppSettingsFile, FileLogger) ───
+inline constexpr const char *kSettingsFileName = "settings.txt";   // exe 옆. portable 은 직접 편집, 설치판은 설치 체크박스가 기록
+inline constexpr const char *kInstanceLockFileName = "DontGoCat.lock";   // %TEMP% (사용자별). 중복 실행 방지
+inline constexpr const char *kLogFileName = "DontGoCat.log";       // exe 옆 (못 쓰면 %LOCALAPPDATA%\DontGoCat). 실행마다 새로 쓴다
+
 // ── 말풍선 (SpeechBubble / BubbleUpdateNotifier, README 5.15) ──
 inline constexpr const char *kBubbleUpdateText = "새 버전 %1 나왔다냥!";   // %1 = 새 버전
 inline constexpr const char *kBubbleSkipText = "이 버전 건너뛰기";
