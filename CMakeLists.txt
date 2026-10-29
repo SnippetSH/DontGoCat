@@ -160,7 +160,26 @@ elseif(APPLE)
         MACOSX_BUNDLE_BUNDLE_NAME "DontGoCat"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_ICON_FILE "DontGoCat.icns"
     )
+    # 앱 아이콘: assets/tray_face_*.png → DontGoCat.icns (sips / iconutil, 빌드 시 생성) → Contents/Resources
+    set(CCAT_ICNS "${CMAKE_CURRENT_BINARY_DIR}/DontGoCat.icns")
+    set(CCAT_ICON_PNGS)
+    foreach(_size 16 32 64 512 1024)
+        list(APPEND CCAT_ICON_PNGS "${CMAKE_CURRENT_SOURCE_DIR}/assets/tray_face_${_size}.png")
+    endforeach()
+    add_custom_command(OUTPUT "${CCAT_ICNS}"
+        COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_icns.sh" "${CMAKE_CURRENT_SOURCE_DIR}/assets" "${CCAT_ICNS}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_icns.sh" ${CCAT_ICON_PNGS}
+        COMMENT "Generating DontGoCat.icns"
+    )
+    target_sources(ccat PRIVATE "${CCAT_ICNS}")
+    set_source_files_properties("${CCAT_ICNS}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    # 패키징 스크립트 (scripts/package_mac.sh) 가 읽는 버전 파일과 macdeployqt 위치
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/ccat_version.txt" CONTENT "${PROJECT_VERSION}")
+    get_target_property(_qmake_exe Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qmake_exe}" DIRECTORY)
+    find_program(MACDEPLOYQT_EXECUTABLE macdeployqt HINTS "${_qt_bin_dir}")
 endif()
 
 add_executable(ccat_preview src/tools/preview_main.cpp)

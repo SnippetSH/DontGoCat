@@ -36,6 +36,7 @@ public:
 
     QRect trayRect() const;          // 트레이 아이콘 geometry, 비었으면 snapshot.trayRect
     int trayFloorY() const;          // 트레이가 있는 모니터의 바닥 y
+    bool trayIconVisible() const;    // 트레이 아이콘 geometry 가 화면 안에 있다 (macOS 는 확인할 수 없어 항상 false)
     bool isPopupOpen() const;
     bool isBlocking() const { return m_blocking; }
     QRect quitButtonRect() const;    // 데스크탑 좌표
@@ -43,6 +44,10 @@ public:
 
 public slots:
     void togglePopup();                                   // 트레이 아이콘 클릭과 동일 (테스트에서 직접 호출)
+    // 앱을 다시 실행함 (macOS reopen). 팝업을 연다 (열려 있으면 그대로). 아이콘이 보이면 아이콘 아래,
+    // 아니면(macOS 는 항상) catAnchor 의 모니터 바닥에 고양이 옆으로 (자리가 있으면 오른쪽, 없으면 왼쪽. MAC-Conception Phase 3)
+    void showPopupForReopen(QPoint catAnchor);
+    void restoreTrayIcon();                               // macOS: 시스템 설정의 메뉴 막대 화면을 연다 (지운 아이콘은 거기서 다시 허용. 그 밖에는 아무것도 안 함)
     void releaseBlock();                                  // 고양이가 방해를 포기함(도달 불가 등) → blockReleased
     void onCursor(QPoint pos);                            // 트레이 접근 판정
     void onCatClicked(Qt::KeyboardModifiers modifiers);   // 고양이 몸 클릭 (방해 중이면 재시도)
@@ -59,6 +64,9 @@ signals:
     void quitAttempted(bool blocked);   // QuitGuard::attempt() 1회마다 (hover 진입 / 방해 중 고양이 클릭). 통계 전용
 
 private:
+    void openPopupAt(const QRect &anchor);   // anchor 가로 중심, anchor 가 있는 모니터의 바닥에 팝업 표시
+    const MonitorInfo *monitorInfoAt(QPoint p) const;
+    int floorYAt(QPoint p) const;
     void onQuitHovered();
     void onQuitClicked();
 
@@ -69,6 +77,7 @@ private:
     DesktopSnapshot m_snapshot;
     QElapsedTimer m_leftSince;
     QString m_autoStartKey;
+    QRect m_clickedTrayRect;         // macOS: 마지막으로 아이콘을 클릭했을 때의 geometry (trayRect 설명)
     int m_scale = 3;
     bool m_blocking = false;
     bool m_soundEnabled = true;

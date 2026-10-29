@@ -4,10 +4,15 @@
 #include "Config.hpp"
 #include "DpiSizeLock.hpp"
 
+#ifdef Q_OS_MACOS
+#include "MacNative.hpp"
+#endif
+
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QEvent>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFrame>
 #include <QGridLayout>
 #include <QGuiApplication>
@@ -28,6 +33,7 @@ namespace {
 // 팝업 크기/여백은 물리 px (QT_ENABLE_HIGHDPI_SCALING=0), 글꼴은 pt 로 지정
 constexpr int kPadPx = 10;               // 좌우/상단 여백
 constexpr int kGapPx = 8;                // 행 사이 간격
+constexpr int kQuitTopPadPx = 12;        // 종료 버튼 위 추가 여백 (kGapPx 에 더해진다)
 constexpr int kIconPx = 24;              // 상단 얼굴 아이콘 (tray_face_24.png 를 그대로 사용)
 constexpr int kScaleButtonH = 24;
 constexpr int kScaleButtonW = 36;
@@ -51,6 +57,9 @@ const char *kStyleSheet =
     "QCheckBox#autostart, QCheckBox#sound { color: #311410; spacing: 6px; }"
     "QLabel#volumeLabel { color: #311410; }"
     "QLabel#volumeLabel:disabled { color: #A89A90; }"
+    "QPushButton#showTrayIcon { background: #FDF5E3; color: #311410; border: 1px solid #311410;"
+    "                           border-radius: 0; padding: 2px 4px; }"
+    "QPushButton#showTrayIcon:hover { background: #FDE3B4; }"
     "QPushButton#quit { background: #D9534F; color: #FFFFFF; border: none; border-radius: 0;"
     "                   padding: 0; font-weight: bold; }"
     "QPushButton#quit:hover { background: #E26A5A; }"
@@ -69,8 +78,12 @@ QuitPopup::QuitPopup(QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);   // Esc 를 받으려면 팝업이 포커스를 가져야 한다 (버튼은 NoFocus)
     setStyleSheet(QString::fromUtf8(kStyleSheet));
 
+#ifdef Q_OS_MACOS
+    QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);   // Segoe UI 가 없어 대체 글꼴 탐색 비용이 든다
+#else
     QFont font;
     font.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("Malgun Gothic")});
+#endif
     font.setPointSize(kFontPt);
     setFont(font);
 
@@ -112,6 +125,17 @@ QuitPopup::QuitPopup(QWidget *parent)
     header->addStretch();
     root->addLayout(header);
 
+#ifdef Q_OS_MACOS
+    // 메뉴 막대 아이콘 복구: Cmd+드래그로 메뉴 막대에서 지우면 다시 켤 곳이 없다 (앱 다시 열기 → 이 팝업).
+    // 지운 상태는 시스템(제어 센터)이 관리해 앱이 되돌릴 수 없으므로 시스템 설정의 메뉴 막대 화면을 연다
+    auto *showTrayIcon = new QPushButton(QString::fromUtf8("메뉴 막대 아이콘 설정 열기"), this);
+    showTrayIcon->setObjectName(QStringLiteral("showTrayIcon"));
+    showTrayIcon->setFocusPolicy(Qt::NoFocus);
+    showTrayIcon->setAttribute(Qt::WA_LayoutUsesWidgetRect);   // QMacStyle 의 버튼 레이아웃 사각형은 위젯보다 작아 아래 위젯과 겹친다
+    root->addWidget(showTrayIcon);
+    connect(showTrayIcon, &QPushButton::clicked, this, &QuitPopup::showTrayIconClicked);
+#endif
+
     // 중단: 배율 1x~4x (배타 선택)
     auto *scales = new QHBoxLayout;
     scales->setSpacing(kScaleButtonGap);
@@ -133,7 +157,11 @@ QuitPopup::QuitPopup(QWidget *parent)
     });
 
     // 자동 시작 체크박스 (표시 전에 TrayController 가 레지스트리 상태로 맞춘다)
+#ifdef Q_OS_MACOS
+    m_autoStart = new QCheckBox(QString::fromUtf8("로그인 시 실행"), this);
+#else
     m_autoStart = new QCheckBox(QString::fromUtf8("윈도우 시작 시 실행"), this);
+#endif
     m_autoStart->setObjectName(QStringLiteral("autostart"));
     m_autoStart->setFocusPolicy(Qt::NoFocus);
     root->addWidget(m_autoStart);
@@ -184,6 +212,8 @@ QuitPopup::QuitPopup(QWidget *parent)
         volumeLabel->setEnabled(on);
     });
 
+    root->addSpacing(kQuitTopPadPx);   // 바닥의 고양이가 종료 버튼을 덮어도 위 설정들은 가리지 않게
+
     // 하단: 종료 버튼 (Config 고정 크기, 배율과 무관)
     m_quitButton = new QPushButton(QStringLiteral("종료"), this);
     m_quitButton->setObjectName(QStringLiteral("quit"));
@@ -193,6 +223,9 @@ QuitPopup::QuitPopup(QWidget *parent)
     quitFont.setPixelSize(kQuitFontPx);
     m_quitButton->setFont(quitFont);
     m_quitButton->installEventFilter(this);
+#ifdef Q_OS_MACOS
+    m_quitButton->setAttribute(Qt::WA_LayoutUsesWidgetRect);   // 위 버튼과 같은 이유 (실제 크기로 배치해 바닥에 정확히 닿게)
+#endif
     root->addWidget(m_quitButton, 0, Qt::AlignHCenter);
     connect(m_quitButton, &QPushButton::clicked, this, &QuitPopup::quitClicked);
 
@@ -298,6 +331,9 @@ void QuitPopup::showAt(const QRect &anchorRect, int floorY, const QRect &monitor
     refreshStats();            // 접힌 폭에도 패널 폭이 반영되도록 현재 값으로 맞춘 뒤 배치
     relayout();
     show();
+#ifdef Q_OS_MACOS
+    MacNative::configurePopupWindow(winId());   // show 뒤에 (Qt 가 표시할 때 창 level 을 플래그 기준으로 다시 정한다)
+#endif
     raise();
     activateWindow();
     setFocus();

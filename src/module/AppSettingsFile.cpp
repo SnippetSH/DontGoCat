@@ -3,7 +3,9 @@
 #include "Config.hpp"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStringList>
 
 namespace {
@@ -52,5 +54,28 @@ AppFileSettings AppSettingsFile::load(const QString &path)
 
 QString AppSettingsFile::defaultPath()
 {
+#ifdef Q_OS_MACOS
+    return QDir::homePath() + QStringLiteral("/Library/Application Support/") + QLatin1String(Config::kSettingsApp)
+        + QLatin1Char('/') + QLatin1String(Config::kSettingsFileName);
+#else
     return QCoreApplication::applicationDirPath() + QLatin1Char('/') + QLatin1String(Config::kSettingsFileName);
+#endif
+}
+
+bool AppSettingsFile::writeDefaultIfMissing(const QString &path)
+{
+    if (QFile::exists(path))
+        return true;
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        return false;
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    file.write("# DontGoCat settings. Edit with a text editor, then restart DontGoCat.\n"
+               "# Lines starting with '#' are comments.\n"
+               "\n"
+               "# enable-log: true  -> write DontGoCat.log in this folder (recreated on every start).\n"
+               "# enable-log: false -> no log file.\n"
+               "enable-log: true\n");
+    return true;
 }

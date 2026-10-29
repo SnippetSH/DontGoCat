@@ -143,6 +143,19 @@ static void testMonitorBounds()
     CHECK(roof.size() == 1 && roof[0]->a == 1700 && roof[0]->b == 1920, "roof clipped to monitor");
 }
 
+static void testCoveredMonitors()
+{
+    std::printf("[6] fullscreen (front window covers monitor)\n");
+    DesktopSnapshot s = monitors({QRect(0, 0, 1920, 1080), QRect(1920, 0, 2560, 1440)});
+    SurfaceBuilder::markCoveredMonitors(s, QRect(0, 30, 1920, 1050));   // 확대 창 (메뉴 막대 아래)
+    CHECK(!s.monitors[0].fullscreen && !s.monitors[1].fullscreen, "zoomed window is not fullscreen");
+    SurfaceBuilder::markCoveredMonitors(s, QRect(1920, 0, 2560, 1440));
+    CHECK(!s.monitors[0].fullscreen && s.monitors[1].fullscreen, "exact cover marks only that monitor");
+    DesktopSnapshot b = monitors({QRect(0, 0, 1920, 1080), QRect(1920, 0, 1920, 1080)});
+    SurfaceBuilder::markCoveredMonitors(b, QRect(-10, -10, 3860, 1100));   // 두 모니터에 걸친 큰 창
+    CHECK(b.monitors[0].fullscreen && b.monitors[1].fullscreen, "spanning window covers both");
+}
+
 int main()
 {
     testMonitorFloors();
@@ -150,5 +163,6 @@ int main()
     testFrontWindowOcclusion();
     testOccluders();
     testMonitorBounds();
+    testCoveredMonitors();
     return testing::testResult("test_surface");
 }

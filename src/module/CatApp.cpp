@@ -17,6 +17,9 @@
 #ifdef Q_OS_WIN
 #  include <windows.h>
 #endif
+#ifdef Q_OS_MACOS
+#  include "MacNative.hpp"
+#endif
 
 Q_LOGGING_CATEGORY(lcStats, "ccat.stats")
 
@@ -109,6 +112,9 @@ CatApp::~CatApp()
 {
     if (m_nativeFilter)
         qApp->removeNativeEventFilter(m_nativeFilter.get());
+#ifdef Q_OS_MACOS
+    MacNative::setReopenHandler({});   // this 를 잡은 처리기를 비운다
+#endif
 }
 
 CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
@@ -362,6 +368,14 @@ void CatApp::start()
     m_statsSaveTimer.start();
 
     m_updates.start(QStringLiteral(CCAT_VERSION));   // Config::kUpdateCheckDelayMs 뒤 1회
+
+#ifdef Q_OS_MACOS
+    // 앱 다시 실행 → 팝업 (메뉴 막대 아이콘이 숨겨져도 종료 / 설정에 닿을 수 있게, MAC-Conception Phase 3).
+    // NSApplication 이 이벤트 루프 시작 때 기본 reopen 처리기를 설치하므로 루프가 돈 뒤에 바꾼다
+    QTimer::singleShot(0, this, [this] {
+        MacNative::setReopenHandler([this] { m_tray.showPopupForReopen(m_body.anchor()); });
+    });
+#endif
 }
 
 void CatApp::onUpdateAvailable(const QString &version)

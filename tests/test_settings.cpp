@@ -105,6 +105,17 @@ static void testLogger(const QString &dir)
     FileLogger::stop();   // 시작 전/후 어느 쪽이든 안전
 }
 
+// 기본 settings.txt 만들기 (macOS 첫 실행): 없는 폴더까지 만들고 enable-log 켜짐, 이미 있으면 덮어쓰지 않음
+static void testWriteDefault(const QString &dir)
+{
+    std::printf("[default file]\n");
+    const QString path = dir + QStringLiteral("/sub/settings.txt");
+    CHECK(AppSettingsFile::writeDefaultIfMissing(path), "creates folder and file");
+    CHECK(QFile::exists(path) && AppSettingsFile::load(path).enableLog, "default enable-log true");
+    CHECK(writeFile(path, "enable-log: false\n"), "edit");
+    CHECK(AppSettingsFile::writeDefaultIfMissing(path) && !AppSettingsFile::load(path).enableLog, "existing file kept");
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -114,5 +125,6 @@ int main(int argc, char **argv)
     testParse();
     testLoad(dir.path());
     testLogger(dir.path());
+    testWriteDefault(dir.path());
     return testing::testResult("test_settings");
 }

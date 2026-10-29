@@ -1,14 +1,25 @@
 #include "TrayController.hpp"
 
 #include "AutoStart.hpp"
+#include "CatSprite.hpp"
 #include "Config.hpp"
 #include "QuitPopup.hpp"
 
+
+#include <QDesktopServices>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QScreen>
+#include <QUrl>
 
 #include <cmath>
 #include <utility>
+
+Q_LOGGING_CATEGORY(lcTray, "ccat.tray")
+
+namespace {
+constexpr int kReopenGapPx = 8;   // 다시 실행 팝업과 고양이 창 사이 간격
+} // namespace
 
 TrayController::TrayController(QObject *parent, QuitGuard::Rng rng)
     : QObject(parent)
@@ -21,8 +32,13 @@ TrayController::TrayController(QObject *parent, QuitGuard::Rng rng)
     m_tray.setToolTip(QStringLiteral("DontGoCat"));
     // 표준 QMenu 는 쓰지 않는다. 좌클릭/우클릭 모두 팝업 토글
     connect(&m_tray, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::Context)
-            togglePopup();
+        if (reason != QSystemTrayIcon::Trigger && reason != QSystemTrayIcon::Context)
+            return;
+#ifdef Q_OS_MACOS
+        m_clickedTrayRect = m_tray.geometry();   // 방금 눌렸으니 보이는 상태 (trayRect 설명 참고)
+        m_trayRectCacheMs = -1;
+#endif
+        togglePopup();
     });
     m_tray.show();
 
@@ -45,6 +61,7 @@ TrayController::TrayController(QObject *parent, QuitGuard::Rng rng)
         m_volume = percent;
         emit volumeChanged(percent);
     });
+    connect(m_popup, &QuitPopup::showTrayIconClicked, this, &TrayController::restoreTrayIcon);
     connect(m_popup, &QuitPopup::closed, this, [this]() {
         m_popupClosedMs = m_clock.elapsed();
         if (m_blocking) {
@@ -78,7 +95,13 @@ QRect TrayController::trayRect() const
     if (m_trayRectCacheMs >= 0 && now - m_trayRectCacheMs < Config::kTrayRectCacheMs)
         return m_trayRectCache;
 
+#ifdef Q_OS_MACOS
+    // macOS 26+: 사용자가 메뉴 막대에서 숨긴(Cmd+드래그 / 설정 스위치) 아이콘은 geometry() 를 읽을 때마다 되살아난다 (실측).
+    // 주기적으로 읽지 않고 마지막으로 아이콘을 클릭했을 때의 위치만 쓴다 (그 전에는 아래 대체값)
+    QRect rect = m_clickedTrayRect;
+#else
     QRect rect = m_tray.geometry();
+#endif
     if (rect.isEmpty())
         rect = m_snapshot.trayRect;
     if (rect.isEmpty()) {
@@ -95,16 +118,43 @@ QRect TrayController::trayRect() const
 
 int TrayController::trayFloorY() const
 {
-    const QPoint center = trayRect().center();
+    return floorYAt(trayRect().center());
+}
+
+const MonitorInfo *TrayController::monitorInfoAt(QPoint p) const
+{
     for (const MonitorInfo &m : m_snapshot.monitors) {
-        if (m.bounds.contains(center))
-            return m.floorY;
+        if (m.bounds.contains(p))
+            return &m;
     }
+    return nullptr;
+}
+
+int TrayController::floorYAt(QPoint p) const
+{
+    if (const MonitorInfo *m = monitorInfoAt(p))
+        return m->floorY;
     // 스냅샷에 없으면 Qt 화면의 작업 영역 하단
-    const QScreen *screen = QGuiApplication::screenAt(center);
+    const QScreen *screen = QGuiApplication::screenAt(p);
     if (!screen)
         screen = QGuiApplication::primaryScreen();
     return screen ? screen->availableGeometry().bottom() + 1 : 0;
+}
+
+bool TrayController::trayIconVisible() const
+{
+#ifdef Q_OS_MACOS
+    return false;   // 숨긴 아이콘은 위치를 묻기만 해도 되살아나 확인할 수 없다 (trayRect 설명) → 모르는 것으로 본다
+#else
+    const QRect icon = m_tray.geometry();
+    if (icon.isEmpty())
+        return false;
+    for (const QScreen *screen : QGuiApplication::screens()) {
+        if (screen->geometry().intersects(icon))
+            return true;
+    }
+    return false;
+#endif
 }
 
 bool TrayController::isPopupOpen() const
@@ -189,26 +239,62 @@ void TrayController::togglePopup()
     if (m_popupClosedMs >= 0 && m_clock.elapsed() - m_popupClosedMs < Config::kReopenGuardMs)
         return;
 
-    const QRect tray = trayRect();
-    QRect monitor;
-    for (const MonitorInfo &m : m_snapshot.monitors) {
-        if (m.bounds.contains(tray.center())) {
-            monitor = m.bounds;
-            break;
-        }
+    openPopupAt(trayRect());
+}
+
+void TrayController::showPopupForReopen(QPoint catAnchor)
+{
+    const bool iconVisible = trayIconVisible();
+    qCInfo(lcTray) << "reopen: tray icon visible" << iconVisible << "cat" << catAnchor;
+    if (m_popup->isVisible()) {
+        m_popup->raise();
+        m_popup->activateWindow();
+        return;
     }
+    if (iconVisible) {
+        openPopupAt(trayRect());
+        return;
+    }
+    // 고양이 창(정사각형, 앵커가 가로 중심)과 겹치지 않게 옆에 둔다. 폭은 setScale 의 relayout 으로 정해진다
+    // 고양이 앵커(발)는 바닥선 위에 있어 모니터 사각형 밖일 수 있다 → 1px 위 점으로 모니터를 고른다
+    m_popup->setScale(m_scale);
+    const QPoint probe = catAnchor - QPoint(0, 1);
+    const MonitorInfo *mon = monitorInfoAt(probe);
+    const int monRight = mon ? mon->bounds.x() + mon->bounds.width() : catAnchor.x() + m_popup->width() * 2;
+    const int offset = CatSprite::Width * m_scale / 2 + kReopenGapPx + m_popup->width() / 2;
+    const bool right = catAnchor.x() + offset + m_popup->width() / 2 <= monRight;
+    const int x = catAnchor.x() + (right ? offset : -offset);
+    openPopupAt(QRect(QPoint(x, probe.y()), QSize(1, 1)));
+}
+
+void TrayController::restoreTrayIcon()
+{
+#ifdef Q_OS_MACOS
+    // macOS 26+ 는 Cmd+드래그로 지운 아이템을 시스템(제어 센터)이 숨기고 있어 앱이 되돌릴 수 없다 (실측).
+    // 아이템을 지우고 다시 만들어도 돌아오지 않고, 오히려 설정의 "메뉴 막대에서 허용" 스위치가 실행 중에 먹지 않게 된다
+    // → 아이템은 그대로 두고, 사용자가 스위치를 켜도록 그 설정 화면만 연다
+    qCInfo(lcTray) << "open menu bar settings";
+    QDesktopServices::openUrl(QUrl(QStringLiteral("x-apple.systempreferences:com.apple.ControlCenter-Settings.extension")));
+#endif
+}
+
+void TrayController::openPopupAt(const QRect &anchor)
+{
+    QRect monitor;
+    if (const MonitorInfo *m = monitorInfoAt(anchor.center()))
+        monitor = m->bounds;
     if (monitor.isEmpty()) {
-        const QScreen *screen = QGuiApplication::screenAt(tray.center());
+        const QScreen *screen = QGuiApplication::screenAt(anchor.center());
         if (!screen)
             screen = QGuiApplication::primaryScreen();
-        monitor = screen ? screen->geometry() : tray;
+        monitor = screen ? screen->geometry() : anchor;
     }
 
     m_popup->setAutoStartChecked(AutoStart::isEnabled(m_autoStartKey));   // 체크 상태 = 레지스트리 값 존재 여부
     m_popup->setSoundChecked(m_soundEnabled);
     m_popup->setVolume(m_volume);
     m_popup->setScale(m_scale);
-    m_popup->showAt(tray, trayFloorY(), monitor);
+    m_popup->showAt(anchor, floorYAt(anchor.center()), monitor);
 }
 
 void TrayController::onQuitHovered()

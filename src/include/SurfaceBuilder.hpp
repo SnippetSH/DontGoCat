@@ -33,4 +33,7 @@ void addMonitorFloors(DesktopSnapshot &snap, int scale);
 void addWindowEdges(DesktopSnapshot &snap, const std::vector<WindowRect> &windows,
                     const std::vector<QRect> &occluders, int scale);
 
+// 전체화면 판정: front(맨 앞 창 사각형)가 모니터 사각형을 완전히 덮으면 그 모니터를 fullscreen 으로 표시한다
+void markCoveredMonitors(DesktopSnapshot &snap, const QRect &front);
+
 } // namespace SurfaceBuilder

@@ -20,6 +20,27 @@ NSWindow *windowOf(WId id)
 
 NSSound *g_sound = nil;   // 재생 중인 소리 (재생이 끝날 때까지 살아 있어야 한다)
 
+std::function<void()> g_reopenHandler;
+
+} // namespace
+
+// NSAppleEventManager 처리기 대상 (selector 를 받는 Obj-C 객체가 필요하다)
+@interface CCatReopenTarget : NSObject
+- (void)handleReopen:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)reply;
+@end
+
+@implementation CCatReopenTarget
+- (void)handleReopen:(NSAppleEventDescriptor *)event withReplyEvent:(NSAppleEventDescriptor *)reply
+{
+    Q_UNUSED(event)
+    Q_UNUSED(reply)
+    if (g_reopenHandler)
+        g_reopenHandler();
+}
+@end
+
+namespace {
+CCatReopenTarget *g_reopenTarget = nil;
 } // namespace
 
 namespace MacNative {
@@ -35,6 +56,12 @@ void configureOverlayWindow(WId id)
         | NSWindowCollectionBehaviorIgnoresCycle;
     w.hidesOnDeactivate = NO;   // Qt::Tool(NSPanel) 기본은 YES → 앱이 비활성이면 사라진다
     w.hasShadow = NO;
+}
+
+void configurePopupWindow(WId id)
+{
+    if (NSWindow *w = windowOf(id))
+        w.level = NSPopUpMenuWindowLevel;
 }
 
 void setIgnoresMouseEvents(WId id, bool ignore)
@@ -102,6 +129,17 @@ void stopSound()
         [g_sound stop];
         g_sound = nil;
     }
+}
+
+void setReopenHandler(std::function<void()> handler)
+{
+    g_reopenHandler = std::move(handler);
+    if (!g_reopenTarget)
+        g_reopenTarget = [[CCatReopenTarget alloc] init];
+    [[NSAppleEventManager sharedAppleEventManager] setEventHandler:g_reopenTarget
+                                                       andSelector:@selector(handleReopen:withReplyEvent:)
+                                                     forEventClass:kCoreEventClass
+                                                        andEventID:kAEReopenApplication];
 }
 
 } // namespace MacNative

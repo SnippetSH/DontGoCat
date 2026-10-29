@@ -287,14 +287,8 @@ const DesktopSnapshot &DesktopScanner::scanNow()
         // 캡션 없는(borderless) 창만 사각형 덮임으로 전체화면 판정한다.
         const LONG_PTR fgStyle = GetWindowLongPtrW(fg, GWL_STYLE);
         const bool normalCaptioned = (fgStyle & WS_CAPTION) == WS_CAPTION;
-        if (!normalCaptioned && frameBounds(fg, frc)) {
-            for (MonitorInfo &m : snap.monitors) {
-                const QRect &b = m.bounds;
-                if (frc.left <= b.x() && frc.top <= b.y()
-                    && frc.right >= b.x() + b.width() && frc.bottom >= b.y() + b.height())
-                    m.fullscreen = true;
-            }
-        }
+        if (!normalCaptioned && frameBounds(fg, frc))
+            SurfaceBuilder::markCoveredMonitors(snap, toQRect(frc));
 
         // QUNS_BUSY 는 쓰지 않는다: 다른 모니터에 최대화 창이 있거나 셸 플라이아웃만 열려도 BUSY 가 나와
         // 평범한 전경 창의 모니터까지 숨겨진다. borderless 전체화면은 위 사각형 판정이 잡는다.

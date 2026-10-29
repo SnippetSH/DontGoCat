@@ -27,6 +27,7 @@
 #endif
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 static void testPopupLayout()
@@ -59,7 +60,12 @@ static void testPopupLayout()
             int scalesBottom = -1;
             for (auto *sb : p.findChildren<QPushButton *>(QStringLiteral("scale")))
                 scalesBottom = qMax(scalesBottom, QRect(sb->mapToGlobal(QPoint(0, 0)), sb->size()).bottom());
-            CHECK(cb->text() == QString::fromUtf8("윈도우 시작 시 실행"), "scale %d checkbox text", s);
+#ifdef Q_OS_MACOS
+            const QString autoStartText = QString::fromUtf8("로그인 시 실행");
+#else
+            const QString autoStartText = QString::fromUtf8("윈도우 시작 시 실행");
+#endif
+            CHECK(cb->text() == autoStartText, "scale %d checkbox text", s);
             CHECK(c.top() > scalesBottom, "scale %d checkbox below scale row (%d > %d)", s, c.top(), scalesBottom);
             CHECK(c.bottom() < b.top(), "scale %d checkbox above quit button", s);
             CHECK(r.contains(c), "scale %d checkbox inside popup", s);
@@ -463,6 +469,55 @@ static void testStatsToggle()
     p.hide();
 }
 
+// 앱 다시 실행 (macOS reopen): 아이콘이 숨겨지면(offscreen 은 아이콘 geometry 가 비어 항상 숨김) 고양이 모니터 바닥에 고양이 옆
+// (오른쪽 우선, 자리가 없으면 왼쪽. 고양이 창과 겹치지 않음).
+// 고양이 앵커는 바닥선 위(모니터 사각형 밖)여도 그 모니터를 고른다. 열려 있으면 다시 불러도 닫히지 않는다
+static void testReopenPlacement()
+{
+    std::printf("[7] reopen placement\n");
+    DesktopSnapshot snap;
+    MonitorInfo a;
+    a.bounds = QRect(0, 0, 1920, 1080);
+    a.workArea = a.bounds;
+    a.floorY = 1080;
+    MonitorInfo b;
+    b.bounds = QRect(1920, 0, 2560, 1440);
+    b.workArea = b.bounds;
+    b.floorY = 1440;
+    snap.monitors = {a, b};
+
+    TrayController tray(nullptr, []() { return 99; });
+    tray.updateSnapshot(snap);
+    CHECK(!tray.trayIconVisible(), "offscreen tray icon is hidden");
+
+    const int catHalf = CatSprite::Width * 3 / 2;   // TrayController 기본 배율 3
+    tray.showPopupForReopen(QPoint(500, 1080));
+    QRect r = tray.popupRect();
+    CHECK(tray.isPopupOpen(), "reopen opens popup");
+    CHECK(r.bottom() + 1 == 1080, "bottom on cat monitor floor (%d)", r.bottom() + 1);
+    CHECK(r.left() >= 500 + catHalf, "right of the cat, no overlap (left %d)", r.left());
+    CHECK(r.left() - (500 + catHalf) <= 16, "next to the cat (left %d)", r.left());
+
+    tray.showPopupForReopen(QPoint(500, 1080));
+    CHECK(tray.isPopupOpen() && tray.popupRect() == r, "second reopen keeps popup open");
+    tray.togglePopup();
+    CHECK(!tray.isPopupOpen(), "toggle closes");
+
+    QThread::msleep(Config::kReopenGuardMs + 50);
+    tray.showPopupForReopen(QPoint(1900, 1080));   // 오른쪽 자리 없음 → 왼쪽
+    r = tray.popupRect();
+    CHECK(r.right() < 1900 - catHalf && r.bottom() + 1 == 1080, "left of the cat when no room on the right (right %d)",
+          r.right());
+    tray.togglePopup();
+
+    QThread::msleep(Config::kReopenGuardMs + 50);
+    tray.showPopupForReopen(QPoint(4470, 1440));   // 두 번째 모니터 오른쪽 끝, 바닥선 위
+    r = tray.popupRect();
+    CHECK(r.bottom() + 1 == 1440, "second monitor floor (%d)", r.bottom() + 1);
+    CHECK(r.left() >= 1920 && r.right() < 4470 - catHalf, "left of the cat on second monitor (%d..%d)", r.left(), r.right());
+    tray.togglePopup();
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
@@ -474,5 +529,6 @@ int main(int argc, char **argv)
     testVolumeSlider();
     testHitsOpaque();
     testStatsToggle();
+    testReopenPlacement();
     return testing::testResult("test_popup");
 }

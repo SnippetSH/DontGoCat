@@ -182,4 +182,14 @@ void addWindowEdges(DesktopSnapshot &snap, const std::vector<WindowRect> &window
     }
 }
 
+void markCoveredMonitors(DesktopSnapshot &snap, const QRect &front)
+{
+    const int fl = front.x(), ft = front.y(), fr = front.x() + front.width(), fb = front.y() + front.height();
+    for (MonitorInfo &m : snap.monitors) {
+        const QRect &b = m.bounds;
+        if (fl <= b.x() && ft <= b.y() && fr >= b.x() + b.width() && fb >= b.y() + b.height())
+            m.fullscreen = true;
+    }
+}
+
 } // namespace SurfaceBuilder

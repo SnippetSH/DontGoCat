@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QLockFile>
 #include <QStandardPaths>
 
@@ -33,11 +34,20 @@ int main(int argc, char *argv[])
         return 0;
 
     // 로그 (settings.txt 의 enable-log). exe 옆에 못 쓰면 %LOCALAPPDATA%\DontGoCat
+    // macOS: settings.txt 와 로그 모두 ~/Library/Application Support/DontGoCat (번들 안에 쓰면 서명이 깨진다)
     const QString settingsPath = AppSettingsFile::defaultPath();
+#ifdef Q_OS_MACOS
+    AppSettingsFile::writeDefaultIfMissing(settingsPath);   // Windows 는 설치판 / portable zip 이 넣어 준다
+#endif
     if (AppSettingsFile::load(settingsPath).enableLog) {
+#ifdef Q_OS_MACOS
+        const QStringList logDirs{QFileInfo(settingsPath).absolutePath()};
+#else
         const QString fallbackDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
             + QLatin1Char('/') + QLatin1String(Config::kSettingsApp);
-        const QString logPath = FileLogger::start({QCoreApplication::applicationDirPath(), fallbackDir});
+        const QStringList logDirs{QCoreApplication::applicationDirPath(), fallbackDir};
+#endif
+        const QString logPath = FileLogger::start(logDirs);
         if (!logPath.isEmpty())
             qInfo().noquote() << "DontGoCat" << CCAT_VERSION << "log started, settings" << QDir::toNativeSeparators(settingsPath);
     }

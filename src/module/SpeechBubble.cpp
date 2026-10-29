@@ -22,6 +22,7 @@
 
 #include <QEnterEvent>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QPainter>
@@ -42,8 +43,12 @@ const QColor kCloseHoverColor(0xC0, 0x39, 0x2B);  // × 위에 커서가 있을 
 
 QFont makeFont(int pixelSize, bool underline = false)
 {
+#ifdef Q_OS_MACOS
+    QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);   // QuitPopup 과 같은 규칙
+#else
     QFont font;   // QuitPopup 과 같은 글꼴 목록
     font.setFamilies({QStringLiteral("Segoe UI"), QStringLiteral("Malgun Gothic")});
+#endif
     font.setPixelSize(pixelSize);
     font.setUnderline(underline);
     return font;

@@ -14,7 +14,8 @@ class QTimer;
 
 // 트레이 아이콘 클릭 시 뜨는 작은 팝업 (README 5.6).
 // - Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint  (Qt::Popup 금지: 고양이 클릭이 바깥 클릭이 됨)
-// - 상단: 얼굴 아이콘 + "DontGoCat", 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스, 음량 슬라이더, 하단: 종료 버튼
+// - 상단: 얼굴 아이콘 + "DontGoCat", (macOS) 메뉴 막대 아이콘 설정 버튼, 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스,
+//   음량 슬라이더, 여백, 하단: 종료 버튼
 // - 팝업 하단과 종료 버튼 하단 = 바닥 y (작업표시줄 윗면) → 바닥의 고양이가 버튼을 덮을 수 있다
 // - 종료 버튼 크기 = Config::kQuitButtonW × kQuitButtonH (물리 px 고정, 배율과 무관)
 // - 앱 비활성화 / Esc 로 닫힘
@@ -57,6 +58,7 @@ signals:
     void autoStartToggled(bool enabled);                  // 사용자가 체크박스를 눌렀다
     void soundToggled(bool enabled);                      // 사용자가 소리 체크박스를 눌렀다
     void volumeSelected(int percent);                     // 사용자가 음량을 정했다 (변경이 멈춘 뒤 한 번, 같은 값이면 나가지 않음)
+    void showTrayIconClicked();                           // macOS: "메뉴 막대 아이콘 설정 열기" (Cmd+드래그로 지운 아이콘 복구)
     void closed();
 
 protected:
