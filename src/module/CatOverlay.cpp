@@ -1,3 +1,6 @@
+#include <QtGlobal>   // Q_OS_WIN 정의용 (windows.h 보다 먼저)
+
+#ifdef Q_OS_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -5,16 +8,22 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#endif
 
 #include "CatOverlay.hpp"
 
 #include "Config.hpp"
 #include "DpiSizeLock.hpp"
 
+#ifdef Q_OS_MACOS
+#include "MacNative.hpp"
+#endif
+
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QPainter>
 
+#ifdef Q_OS_WIN
 namespace {
 
 HWND toHwnd(WId id)
@@ -34,6 +43,7 @@ bool setExStyleBits(HWND hwnd, LONG_PTR bits, bool on)
 }
 
 } // namespace
+#endif
 
 CatOverlay::CatOverlay(QWidget *parent)
     : QWidget(parent, Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint
@@ -41,6 +51,9 @@ CatOverlay::CatOverlay(QWidget *parent)
 {
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
+#ifdef Q_OS_MACOS
+    setAttribute(Qt::WA_MacAlwaysShowToolWindow);   // Qt::Tool 창이 앱 비활성 시 숨지 않게 (MacNative 에서도 hidesOnDeactivate = NO)
+#endif
     setScale(m_scale);
     applyNativeStyle();   // 네이티브 창을 미리 만들어 표시 전에 스타일을 적용 (showEvent 에서도 다시 확인)
 }
@@ -72,6 +85,14 @@ void CatOverlay::place()
     const QPoint topLeft = m_anchorDesktop - CatSprite::anchorIn(m_gravity) * m_scale;
     const int side = CatSprite::Width * m_scale;
     const QRect want(topLeft, QSize(side, side));
+#ifdef Q_OS_MACOS
+    // macOS 는 Qt 좌표 = 전역 포인트 좌표이고 DPI 로 창 크기가 바뀌지 않는다 → Qt 로 옮기기만 한다
+    if (m_placed && topLeft == m_topLeft && geometry() == want)
+        return;
+    m_topLeft = topLeft;
+    m_placed = true;
+    move(topLeft);
+#else
     HWND hwnd = toHwnd(winId());
     // 위치가 그대로여도 DPI 가 다른 모니터로 넘어가며 Windows / Qt 가 창 위치·크기를 바꿨을 수 있다 → 실제 사각형까지 같을 때만 건너뛴다
     RECT real{};
@@ -83,6 +104,7 @@ void CatOverlay::place()
     // 활성화/Z 순서는 건드리지 않고, 크기도 매번 물리 px 로 명시해 DPI 변경으로 틀어진 크기를 바로잡는다
     SetWindowPos(hwnd, nullptr, want.x(), want.y(), want.width(), want.height(),
                  SWP_NOACTIVATE | SWP_NOZORDER);
+#endif
 }
 
 bool CatOverlay::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
@@ -97,8 +119,13 @@ bool CatOverlay::nativeEvent(const QByteArray &eventType, void *message, qintptr
 void CatOverlay::setClickThrough(bool on)
 {
     m_clickThrough = on;
+#ifdef Q_OS_MACOS
+    // 해제했을 때 알파 0 픽셀이 아래 창으로 통과되는지는 실측 필요 (MAC-Conception Phase 1)
+    MacNative::setIgnoresMouseEvents(winId(), on);
+#else
     // WS_EX_TRANSPARENT 만 토글. 레이어드 창이라 해제해도 알파 0 픽셀은 계속 통과된다
     setExStyleBits(toHwnd(winId()), WS_EX_TRANSPARENT, on);
+#endif
 }
 
 bool CatOverlay::hitsOpaque(QPoint desktop) const
@@ -116,8 +143,12 @@ void CatOverlay::ensureTopmost()
 {
     if (!isVisible())
         return;
+#ifdef Q_OS_MACOS
+    MacNative::orderFront(winId());
+#else
     SetWindowPos(toHwnd(winId()), HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
 }
 
 WindowHandle CatOverlay::handle() const
@@ -145,8 +176,10 @@ void CatOverlay::mousePressEvent(QMouseEvent *event)
     }
     // 창이 포커스를 받지 않으므로 키보드 상태는 전역에서 직접 읽는다
     Qt::KeyboardModifiers mods = QGuiApplication::queryKeyboardModifiers();
+#ifdef Q_OS_WIN
     if (GetKeyState(VK_SHIFT) & 0x8000)
         mods |= Qt::ShiftModifier;
+#endif
     emit clicked(mods);
 }
 
@@ -167,7 +200,13 @@ void CatOverlay::applyNativeStyle()
 {
     // README 3.4: 레이어드 + (클릭 통과) + 포커스 안 받음 + 작업표시줄/Alt+Tab 미표시.
     // WA_TranslucentBackground 가 이미 WS_EX_LAYERED 를 쓰므로 OR 만 한다 (다른 비트는 건드리지 않음)
+#ifdef Q_OS_MACOS
+    // macOS: 모든 Space 에 표시 + Dock·팝업보다 위 + 그림자 없음 (MacNative::configureOverlayWindow)
+    MacNative::configureOverlayWindow(winId());
+    MacNative::setIgnoresMouseEvents(winId(), m_clickThrough);
+#else
     HWND hwnd = toHwnd(winId());
     setExStyleBits(hwnd, WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, true);
     setExStyleBits(hwnd, WS_EX_TRANSPARENT, m_clickThrough);
+#endif
 }

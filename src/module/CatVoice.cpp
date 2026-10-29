@@ -9,6 +9,8 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <mmsystem.h>
+#elif defined(Q_OS_MACOS)
+#include "MacNative.hpp"
 #endif
 
 #include <algorithm>
@@ -118,6 +120,8 @@ void CatVoice::play(int index)
         if (wav.isEmpty())
             return;
         PlaySoundW(reinterpret_cast<LPCWSTR>(wav.constData()), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+#elif defined(Q_OS_MACOS)
+        MacNative::playWav(m_sounds[index]);   // 비어 있으면 아무것도 하지 않는다
 #endif
     }
     emit meowed(index);
@@ -128,5 +132,8 @@ void CatVoice::stopPlayback()
 #ifdef Q_OS_WIN
     if (!m_player)
         PlaySoundW(nullptr, nullptr, 0);
+#elif defined(Q_OS_MACOS)
+    if (!m_player)
+        MacNative::stopSound();
 #endif
 }

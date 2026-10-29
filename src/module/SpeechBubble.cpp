@@ -16,6 +16,10 @@
 #include "Config.hpp"
 #include "DpiSizeLock.hpp"
 
+#ifdef Q_OS_MACOS
+#include "MacNative.hpp"
+#endif
+
 #include <QEnterEvent>
 #include <QFont>
 #include <QFontMetrics>
@@ -67,6 +71,9 @@ void applyNativeStyle(QWidget *w)
 #ifdef Q_OS_WIN
     // CatOverlay::applyNativeStyle 와 같다: 포커스를 받지 않고 작업표시줄 / Alt+Tab 에 나타나지 않는다
     setExStyleBits(toHwnd(w->winId()), WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+#elif defined(Q_OS_MACOS)
+    // 고양이 창과 같은 level / Space 동작 (클릭은 받는다)
+    MacNative::configureOverlayWindow(w->winId());
 #else
     Q_UNUSED(w);
 #endif
@@ -81,6 +88,9 @@ SpeechBubble::SpeechBubble(QWidget *parent)
 {
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
+#ifdef Q_OS_MACOS
+    setAttribute(Qt::WA_MacAlwaysShowToolWindow);   // 앱 비활성 시에도 숨지 않게 (CatOverlay 와 같음)
+#endif
     setMouseTracking(true);
     setCursor(Qt::PointingHandCursor);   // 말풍선 어디든 눌린다
     m_timeout->setSingleShot(true);
@@ -169,6 +179,9 @@ void SpeechBubble::ensureTopmost()
     HWND hwnd = toHwnd(winId());
     if (IsWindow(hwnd))
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#elif defined(Q_OS_MACOS)
+    if (isVisible())
+        MacNative::orderFront(winId());
 #endif
 }
 

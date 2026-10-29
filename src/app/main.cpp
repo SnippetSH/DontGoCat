@@ -14,8 +14,11 @@
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
     // 모든 좌표를 물리 px 로 맞춘다 (README 3.1)
     qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+#endif
+    // macOS 는 Qt / CG 모두 포인트 좌표라 그대로 쓴다 (Retina 배율은 OS 가 처리)
 
     QApplication app(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);

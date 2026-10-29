@@ -5,6 +5,7 @@
 // 윈도우 시작 시 자동 실행 (README 5.11).
 // HKCU\Software\Microsoft\Windows\CurrentVersion\Run 에 값 "DontGoCat" = "<DontGoCat.exe 전체 경로>" 를 넣고 뺀다.
 // 모든 함수의 runKey 는 HKCU 아래 하위 키 경로이며, 비우면 실제 Run 키를 쓴다 (테스트는 별도 키를 넘긴다).
+// macOS (AutoStart_mac.cpp): ~/Library/LaunchAgents/com.dontgocat.app.plist 를 쓰고 지운다. runKey = plist 파일 경로.
 namespace AutoStart {
 
 inline constexpr const wchar_t *kValueName = L"DontGoCat";

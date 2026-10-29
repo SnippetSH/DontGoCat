@@ -16,6 +16,7 @@ class QRandomGenerator;
 // 소리 번호는 울음 [0, kMeowSoundCount) 다음에 잡힘 [kMeowSoundCount, + kGrabSoundCount) 을 잇는다.
 // 재생 중에 다시 부르면 앞 소리를 끊고 새로 재생.
 // 재생은 Win32 PlaySound(SND_MEMORY | SND_ASYNC) — Qt Multimedia 없이 exe 안의 wav 를 그대로 쓴다.
+// (macOS 는 MacNative::playWav = NSSound initWithData, 같은 크기 적용 사본을 재생)
 // - 크기: PlaySound 에 볼륨이 없어서 원본 wav 를 보관해 두고, setVolume 때마다 샘플에 % 를 곱한 사본을 다시 만든다.
 // - 꺼져 있으면(setEnabled(false)) meow() 는 아무것도 하지 않는다.
 class CatVoice : public QObject

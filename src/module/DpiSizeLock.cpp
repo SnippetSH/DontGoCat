@@ -1,3 +1,6 @@
+#include <QtGlobal>   // Q_OS_WIN 정의용 (windows.h 보다 먼저)
+
+#ifdef Q_OS_WIN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -5,6 +8,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#endif
 
 #include "DpiSizeLock.hpp"
 
@@ -16,6 +20,14 @@ namespace DpiSizeLock {
 
 bool handle(const QByteArray &eventType, void *message, qintptr *result, QSize fixedSize)
 {
+#ifndef Q_OS_WIN
+    // macOS 등: 포인트 좌표라 DPI 로 창 크기가 바뀌지 않는다
+    Q_UNUSED(eventType)
+    Q_UNUSED(message)
+    Q_UNUSED(result)
+    Q_UNUSED(fixedSize)
+    return false;
+#else
     if (eventType != "windows_generic_MSG" || !message || fixedSize.isEmpty())
         return false;
     const MSG *msg = static_cast<const MSG *>(message);
@@ -28,6 +40,7 @@ bool handle(const QByteArray &eventType, void *message, qintptr *result, QSize f
     if (result)
         *result = TRUE;
     return true;
+#endif
 }
 
 } // namespace DpiSizeLock

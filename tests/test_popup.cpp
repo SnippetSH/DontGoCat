@@ -21,7 +21,9 @@
 #include <QSlider>
 #include <QThread>
 
+#ifdef Q_OS_WIN
 #include <windows.h>
+#endif
 
 #include <cstdio>
 #include <vector>
