@@ -10,6 +10,7 @@
 #include "PathPlanner.hpp"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QDebug>
 
 #include <chrono>
@@ -17,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <numeric>
 #include <random>
 
@@ -1040,11 +1042,13 @@ static void testReal()
 int main(int argc, char **argv)
 {
     setvbuf(stdout, nullptr, _IONBF, 0);   // 시간 초과로 죽어도 진행 로그가 남도록
-    QCoreApplication app(argc, argv);
     bool realDesktop = false;
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--real-desktop") == 0)
             realDesktop = true;
+    // macOS DesktopScanner 는 모니터를 QScreen 에서 읽으므로 실제 스캔에는 QGuiApplication 이 필요하다
+    std::unique_ptr<QCoreApplication> app = realDesktop ? std::make_unique<QGuiApplication>(argc, argv)
+                                                        : std::make_unique<QCoreApplication>(argc, argv);
 
     testSpriteAnchor();
     testFall();

@@ -290,6 +290,10 @@ void QuitPopup::showAt(const QRect &anchorRect, int floorY, const QRect &monitor
     m_monitor = monitor;
     m_hasPlacement = true;
     m_wasActive = false;
+#ifdef Q_OS_MACOS
+    // 네이티브 창이 없을 때의 move() 는 첫 show 에서 Cocoa 가 y 를 보정해 바닥에서 뜬다 (실측 20pt). 먼저 만들어 둔다
+    (void)winId();
+#endif
     setStatsExpanded(false);   // 열릴 때마다 접힌 상태로 시작
     refreshStats();            // 접힌 폭에도 패널 폭이 반영되도록 현재 값으로 맞춘 뒤 배치
     relayout();

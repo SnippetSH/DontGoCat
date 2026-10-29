@@ -48,6 +48,8 @@ add_library(ccat_platform STATIC
     src/include/Config.hpp
     src/include/Surface.hpp
     src/module/Surface.cpp
+    src/include/SurfaceBuilder.hpp
+    src/module/SurfaceBuilder.cpp
     src/include/DesktopScanner.hpp
     src/include/MouseWatcher.hpp
     src/module/MouseWatcher.cpp

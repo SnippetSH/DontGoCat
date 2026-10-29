@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSlider>
+#include <QTemporaryDir>
 #include <QThread>
 
 #ifdef Q_OS_WIN
@@ -158,14 +159,25 @@ static void testClickRules()
     CHECK(attempted.size() == 3, "no more quitAttempted after idle clicks (%zu)", attempted.size());
 }
 
-// 자동 시작 체크박스: 표시 시 레지스트리 상태 반영, 토글 → 등록/삭제, 실패 시 되돌림.
-// 실제 Run 키 대신 HKCU\Software\CCatTest\PopupRun 임시 키를 쓴다.
+// 자동 시작 체크박스: 표시 시 등록 상태 반영, 토글 → 등록/삭제, 실패 시 되돌림.
+// Windows: 실제 Run 키 대신 HKCU\Software\CCatTest\PopupRun 임시 키를 쓴다.
+// macOS: 실제 LaunchAgents 대신 임시 디렉터리의 PopupRun.plist 를 쓴다.
 static void testAutoStartUi()
 {
     std::printf("[3] autostart checkbox\n");
+#ifdef Q_OS_WIN
     const QString testRoot = QStringLiteral("Software\\CCatTest");
     const QString key = testRoot + QStringLiteral("\\PopupRun");
+    const QString badKey = testRoot + QLatin1Char('\\') + QString(300, QLatin1Char('a'));   // 키 이름 길이 제한 초과
     RegDeleteTreeW(HKEY_CURRENT_USER, testRoot.toStdWString().c_str());
+#else
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid(), "temp dir for plist");
+    if (!tmp.isValid())
+        return;
+    const QString key = tmp.filePath(QStringLiteral("PopupRun.plist"));
+    const QString badKey = tmp.filePath(QString(300, QLatin1Char('a')) + QStringLiteral("/PopupRun.plist"));   // 파일 이름 255바이트 초과 → mkpath 실패
+#endif
 
     TrayController tray(nullptr, []() { return 99; });
     tray.setAutoStartKey(key);
@@ -207,12 +219,14 @@ static void testAutoStartUi()
     CHECK(!cb->isChecked() && !AutoStart::isEnabled(key), "second click disables");
 
     // 쓰기 실패 → 체크 되돌림
-    tray.setAutoStartKey(testRoot + QLatin1Char('\\') + QString(300, QLatin1Char('a')));
+    tray.setAutoStartKey(badKey);
     cb->click();
     CHECK(!cb->isChecked(), "checkbox reverted on failure");
 
     popup->hide();
+#ifdef Q_OS_WIN
     RegDeleteTreeW(HKEY_CURRENT_USER, testRoot.toStdWString().c_str());
+#endif
 }
 
 // 음량 슬라이더: 트랙 클릭(값 이동 후 놓기), 끌기, 휠 연속 변경이 각각 volumeSelected 한 번으로 묶이는지
@@ -438,13 +452,14 @@ static void testStatsToggle()
     p.hide();
     p.showAt(tray, floorY, monitor);
     CHECK(p.desktopRect().width() >= rw.width(), "showAt recomputes width (may grow)");
+    const int shownW = p.desktopRect().width();   // 표시 중 폭 (폰트에 따라 r0 보다 넓을 수 있다)
 
     // 원본 없음 → "-"
     p.setStatsSource(nullptr);
     p.setStatsExpanded(true);
     CHECK(statText(p, "stat_total_runMs") == QStringLiteral("-"), "null source shows dash");
     CHECK(statText(p, "stat_session_grabs") == QStringLiteral("-"), "null source session dash");
-    CHECK(p.desktopRect().width() == r0.width(), "width same with null source");
+    CHECK(p.desktopRect().width() == shownW, "width locked with null source (%d == %d)", p.desktopRect().width(), shownW);
     p.hide();
 }
 

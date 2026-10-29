@@ -23,6 +23,9 @@ function(ccat_add_test NAME SOURCE)
     set_tests_properties(${NAME} PROPERTIES ENVIRONMENT_MODIFICATION "${_mods}" TIMEOUT 300)
 endfunction()
 
+# SurfaceBuilder: 모니터 바닥 / 창 엣지 / 가림 (플랫폼 공통 면 계산, 합성 사각형)
+ccat_add_test(test_surface test_surface.cpp LIBS ccat_platform)
+
 # Locomotion + PathPlanner (면 이동, 점프, 모서리, 낙하, 경로 탐색). `--real-desktop` 은 수동 전용
 ccat_add_test(test_motion test_motion.cpp LIBS ccat_core)
 

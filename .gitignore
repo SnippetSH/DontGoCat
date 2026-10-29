@@ -15,3 +15,6 @@ graphify-out/
 .archify/
 archify-*.html
 MAC-Conception.md
+*.zip
+.mcp.json
+**/.DS_Store
