@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "최소 macOS 버전 (Windows 에서는 무시)")   # project() 보다 먼저
-project(DontGoCat VERSION 1.4.1 LANGUAGES CXX)
+project(DontGoCat VERSION 1.4.2 LANGUAGES CXX)
 if(APPLE)
     enable_language(OBJCXX)   # macOS 네이티브 계층 (.mm)
 endif()
