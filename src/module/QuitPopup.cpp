@@ -33,7 +33,11 @@ namespace {
 // 팝업 크기/여백은 물리 px (QT_ENABLE_HIGHDPI_SCALING=0), 글꼴은 pt 로 지정
 constexpr int kPadPx = 10;               // 좌우/상단 여백
 constexpr int kGapPx = 8;                // 행 사이 간격
+#ifdef Q_OS_MACOS
 constexpr int kQuitTopPadPx = 12;        // 종료 버튼 위 추가 여백 (kGapPx 에 더해진다)
+#else
+constexpr int kQuitTopPadPx = 18;        // 윈도우는 위쪽 행 간격이 넓어 같은 여백이 덜 드러난다
+#endif
 constexpr int kIconPx = 24;              // 상단 얼굴 아이콘 (tray_face_24.png 를 그대로 사용)
 constexpr int kScaleButtonH = 24;
 constexpr int kScaleButtonW = 36;
