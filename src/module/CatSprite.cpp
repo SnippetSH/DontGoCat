@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <string_view>
 #include <vector>
 
@@ -429,6 +430,39 @@ QImage renderHang(int frame, CatFacing facing, const CatPalette &palette)
     return img;
 }
 
+// 강아지 비트맵 시트 (py_codes/make_dog_assets.py 가 생성). 시트 = 프레임을 가로로 이어 붙인 rows 줄
+struct DogSheet
+{
+    int frames;
+    int rows;
+    const char *const *data;
+};
+
+#include "DogFrames.inc"
+
+CatSpecies g_species = CatSpecies::Cat;
+
+QImage renderDogFrame(CatSpecies species, int animIndex, int frame)
+{
+    const bool white = species == CatSpecies::WhiteDog;
+    const DogSheet *sheets = white ? kWhiteDogSheets : kBrownDogSheets;
+    const char *keys = white ? kWhiteDogKeys : kBrownDogKeys;
+    const QRgb *colors = white ? kWhiteDogColors : kBrownDogColors;
+    constexpr int kSheetCount = int(sizeof(kWhiteDogSheets) / sizeof(kWhiteDogSheets[0]));
+    const DogSheet &sheet = sheets[std::clamp(animIndex, 0, kSheetCount - 1)];
+    const int f = ((frame % sheet.frames) + sheet.frames) % sheet.frames;
+
+    QImage img(CatSprite::DogWidth, sheet.rows, QImage::Format_ARGB32);
+    for (int y = 0; y < sheet.rows; ++y) {
+        const char *row = sheet.data[y] + f * CatSprite::DogWidth;
+        for (int x = 0; x < CatSprite::DogWidth; ++x) {
+            const char *k = row[x] == '.' ? nullptr : std::strchr(keys, row[x]);
+            img.setPixel(x, y, k ? colors[k - keys] : qRgba(0, 0, 0, 0));
+        }
+    }
+    return img;
+}
+
 } // namespace
 
 int CatSprite::snap(qreal v)
@@ -571,8 +605,88 @@ QImage CatSprite::renderOriented(const CatPose &pose, CatGravity gravity, CatFac
     return out;
 }
 
+void CatSprite::setSpecies(CatSpecies species)
+{
+    g_species = species;
+}
+
+CatSpecies CatSprite::species()
+{
+    return g_species;
+}
+
+int CatSprite::frameHeight()
+{
+    return g_species == CatSpecies::Cat ? Height : DogHeight;
+}
+
+int CatSprite::canvasSide()
+{
+    return g_species == CatSpecies::Cat ? Width : DogWidth;
+}
+
+int CatSprite::stretchLiftSpritePx()
+{
+    return g_species == CatSpecies::Cat ? 1 : 0;
+}
+
+QImage CatSprite::renderFrame(int animIndex, int frame, const CatPose &pose, CatGravity gravity, CatFacing facing)
+{
+    if (g_species == CatSpecies::Cat)
+        return renderOriented(pose, gravity, facing);
+
+    QImage img = renderDogFrame(g_species, animIndex, frame);
+    if (facing == CatFacing::Right)
+        img = img.flipped(Qt::Horizontal);
+    // 매달림은 고양이처럼 바닥 방향으로만 그린다
+    if (gravity == CatGravity::Down || pose.bodyShape == CatBody::Hang)
+        return img;
+    // renderOriented 와 같은 무손실 90° 회전: (x, y) → 시계 (H-1-y, x), 반시계 (y, W-1-x)
+    const int w = img.width(), h = img.height();
+    QImage out(h, w, QImage::Format_ARGB32);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const QRgb px = img.pixel(x, y);
+            if (gravity == CatGravity::Left)
+                out.setPixel(h - 1 - y, x, px);
+            else
+                out.setPixel(y, w - 1 - x, px);
+        }
+    return out;
+}
+
+QPoint CatSprite::anchorIn(CatGravity gravity, CatSpecies species)
+{
+    if (species == CatSpecies::Cat) {
+        const CatSpecies saved = g_species;
+        g_species = CatSpecies::Cat;
+        const QPoint p = anchorIn(gravity);
+        g_species = saved;
+        return p;
+    }
+    // 고양이와 같은 연속 좌표 회전 공식 (DogWidth x DogHeight, 지면선 DogGroundLine)
+    switch (gravity) {
+    case CatGravity::Left:  return QPoint(DogHeight - DogGroundLine, DogWidth / 2);
+    case CatGravity::Right: return QPoint(DogGroundLine, DogWidth / 2);
+    default:                return QPoint(DogWidth / 2, DogGroundLine);
+    }
+}
+
+QPoint CatSprite::hangGripIn(CatFacing facing, CatSpecies species)
+{
+    if (species == CatSpecies::Cat) {
+        constexpr int kGripX = 16, kGripY = 0;
+        return QPoint(facing == CatFacing::Right ? Width - kGripX : kGripX, kGripY);
+    }
+    // 가슴 가운데 2x2 칸 (14~15, 19~20) 의 중심 (픽셀 경계 좌표). Right 는 좌우 반전
+    constexpr int kGripX = 15, kGripY = 20;
+    return QPoint(facing == CatFacing::Right ? DogWidth - kGripX : kGripX, kGripY);
+}
+
 QPoint CatSprite::anchorIn(CatGravity gravity)
 {
+    if (g_species != CatSpecies::Cat)
+        return anchorIn(gravity, g_species);
     // 서 있는 발바닥의 가장 아래 불투명 줄은 Height-2 (= 22) 줄이고, 그 줄의 아래 경계가 지면선(y = Height-1 = 23)이다.
     // 기본 프레임의 앵커 (Width/2, Height-1) 은 픽셀 경계 좌표이므로 연속 좌표 회전 공식을 그대로 쓴다.
     //   시계 방향:   (x, y) → (Height - y, x)   → (1, Width/2)       (22 줄이 1열로 가므로 그 열의 바깥 경계)
@@ -587,6 +701,8 @@ QPoint CatSprite::anchorIn(CatGravity gravity)
 
 QPoint CatSprite::hangGripIn(CatFacing facing)
 {
+    if (g_species != CatSpecies::Cat)
+        return hangGripIn(facing, g_species);
     // 위로 뻗은 앞발 끝 맨 윗줄(y=0, 3칸 x=15..17)의 가운데 칸 x=16 의 왼쪽 위 모서리 (픽셀 경계 좌표).
     // anchorIn 이 픽셀 경계 좌표(Width/2, Height-1)를 쓰는 것과 같은 규칙이라 커서 끝이 앞발 맨 윗줄 윗변에 닿는다.
     // 정수 좌표라 가운데 칸의 중앙(16.5)에서 반 칸 왼쪽이며, Right 는 캔버스 좌우 반전 좌표 (Width - 16 = 16, 가운데 칸의 오른쪽 변)

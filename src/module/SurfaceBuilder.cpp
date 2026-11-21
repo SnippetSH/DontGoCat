@@ -129,7 +129,7 @@ void addMonitorFloors(DesktopSnapshot &snap, int scale)
 void addWindowEdges(DesktopSnapshot &snap, const std::vector<WindowRect> &windows,
                     const std::vector<QRect> &occluders, int scale)
 {
-    const int catH = CatSprite::Height * scale;   // 면에 붙었을 때 몸 두께
+    const int catH = CatSprite::frameHeight() * scale;   // 면에 붙었을 때 몸 두께
     const int minLen = Config::kMinSegmentSpritePx * scale;
 
     std::vector<QRect> monitorRects;

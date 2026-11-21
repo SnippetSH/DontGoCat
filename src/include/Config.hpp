@@ -15,6 +15,7 @@ inline constexpr const char *kSettingsApp = "DontGoCat";
 inline constexpr const char *kSettingsScaleKey = "scale";
 inline constexpr const char *kSettingsSoundKey = "sound";   // 고양이 소리 켜기/끄기 (기본 켜짐)
 inline constexpr const char *kSettingsVolumeKey = "volume"; // 고양이 소리 크기 % (없으면 kMeowVolume)
+inline constexpr const char *kSettingsSpeciesKey = "species"; // 화면의 동물: "cat" / "white_dog" / "brown_dog" (없으면 cat)
 
 // ── 타이머 ──────────────────────────────────────────
 inline constexpr int kTickMs = 16;            // 메인 tick (Locomotion, CatBrain)
@@ -50,7 +51,7 @@ inline constexpr double kFallPenaltySec = 0.3;        // 플래너: 낙하 착�
 
 // Climb / Mantle 은 팔·발이 기본 프레임 마지막 줄(Height-1)까지 내려와 지면선 아래로 1 스프라이트 px 파고든다.
 // 그릴 때 이만큼 면에서 띄워(Climb: 벽에서 멀어지는 쪽, Mantle: 위쪽) 팔이 면에 정확히 닿게 한다.
-inline constexpr int kStretchLiftSpritePx = 1;
+inline constexpr int kStretchLiftSpritePx = 1;   // 고양이 값. 동물별 값은 CatSprite::stretchLiftSpritePx()
 
 // 대시 (종료 방해 커서 추적, README 5.9): run 을 빠르게 재생하며 디딤발과 무관하게 미끄러져 이동
 inline constexpr int kDashSpeedSpritePxPerS = 300;    // × scale px/s

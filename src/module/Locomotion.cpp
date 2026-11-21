@@ -896,7 +896,7 @@ CatFrame Locomotion::frame() const
 
     // Climb / Mantle 은 팔·발이 기본 프레임 마지막 줄(지면선 아래 1 스프라이트 px)까지 내려오므로 면에서 띄워 정확히 닿게 한다
     if (m_mode == Mode::Attached && (m_anim == CatAnim::Climb || m_anim == CatAnim::Mantle)) {
-        const int lift = Config::kStretchLiftSpritePx * m_scale;
+        const int lift = CatSprite::stretchLiftSpritePx() * m_scale;
         if (f.gravity == CatGravity::Left)
             f.anchor.rx() += lift;
         else if (f.gravity == CatGravity::Right)

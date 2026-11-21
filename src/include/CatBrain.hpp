@@ -60,6 +60,10 @@ public:
     void moveGrab(QPoint gripDesktop);
     void releaseGrab();
 
+    // 몸이 다른 자리에 새로 나타났다 (동물 전환, CatApp::setSpecies). 진행 중인 경로를 버리고
+    // 같은 의도를 새 자리에서 처음부터 (낙하 착지와 같은 처리)
+    void respawned();
+
     // 말하기 (README 5.9, 5.15): 말풍선을 띄우는 동안 그 자리에 멈춘다 (바닥/지붕 = sit, 벽 = 그 자리 정지).
     // 자는 중(수면 전 sit 포함)이거나 더 높은 상태(Hidden/Grabbed/Falling/QuitBlock/TrayApproach) 중이면
     // 끝날 때까지 기다렸다가 시작한다. 시작하면 announceStarted.

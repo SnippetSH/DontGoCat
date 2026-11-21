@@ -28,6 +28,11 @@ struct CatPalette
 
 enum class CatFacing { Left, Right };
 
+// 화면에 나오는 동물 (팝업 얼굴 버튼으로 고름, QSettings Config::kSettingsSpeciesKey).
+// 고양이는 파츠 조합, 강아지는 비트맵 프레임 (DogFrames.inc, py_codes/make_dog_assets.py).
+// 움직임(CatPose / CatAnim 키포즈 / 이동 속도)은 모두 같고 그림과 크기만 다르다.
+enum class CatSpecies { Cat, WhiteDog, BrownDog };
+
 // 고양이 발이 향하는 방향 = 붙어 있는 면 쪽 (README 3.3)
 //   Down : 바닥 (작업표시줄, 창 지붕)         — 변환 없음
 //   Left : 창 오른쪽 측면 (벽이 고양이 왼쪽)   — 시계 방향 90°
@@ -103,12 +108,40 @@ public:
     //   Down (16, 23) / Left (1, 16) / Right (23, 16)
     //   (Left/Right 는 22 줄이 1열/22열로 옮겨지므로 그 열의 바깥 경계. 맨 바깥 열 0/23 은 투명 여백)
     // 벽타기 팔(옆으로 뻗은 다리)은 마지막 줄(Height-1)까지 내려올 수 있어 면 아래로 1 스프라이트 px 파고든다.
+    // 강아지: Down (20, 28) / Left (4, 20) / Right (28, 20) — 같은 규칙을 40x32 프레임과 지면선 28 에 적용
     static QPoint anchorIn(CatGravity gravity);
 
     // Hang 프레임(회전 없는 Width×Width 이미지) 안에서 커서 끝이 놓일 그립 점 (픽셀 경계 좌표):
     // 위로 뻗은 앞발 맨 윗줄(y=0) 가운데 칸의 왼쪽 위 모서리 (16, 0). Right 보기는 좌우 반전 좌표.
     // 모든 Hang 프레임에서 같은 점이다 (README 5.1, 5.13)
+    // 강아지: 앞발이 아니라 가슴 가운데 (15, 20) (40x40 프레임, Right 는 (25, 20)). 사용자 지정 (2026-11-22)
     static QPoint hangGripIn(CatFacing facing);
+
+    // ── 동물 종류 ───────────────────────────────────────
+    // 한 번에 한 동물만 나오므로 프로세스 전체에 하나. 기본은 Cat 이고, 아래 species 인자 없는 함수들
+    // (anchorIn / hangGripIn / frameHeight / canvasSide / stretchLiftSpritePx) 이 현재 동물 기준으로 답한다.
+    static void setSpecies(CatSpecies species);
+    static CatSpecies species();
+
+    // 강아지 프레임 규격: 40x32 (hang 40x40), 지면선 28 줄 (발 밑 외곽선 27 줄의 아래 경계)
+    static constexpr int DogWidth = 40;
+    static constexpr int DogHeight = 32;
+    static constexpr int DogGroundLine = 28;
+
+    // 현재 동물의 기본 프레임 높이 (고양이 Height, 강아지 DogHeight). 면에 붙었을 때 몸 두께 판정에 쓴다
+    static int frameHeight();
+    // 오버레이 창 한 변 (스프라이트 px): 회전·매달림 프레임이 모두 들어가는 정사각형 (고양이 Width, 강아지 DogWidth)
+    static int canvasSide();
+    // Climb / Mantle 프레임의 팔이 지면선 아래로 파고드는 칸 수 (고양이 1, 강아지 0: 강아지 그림은 지면선 위에서 끝남)
+    static int stretchLiftSpritePx();
+
+    // 현재 동물로 프레임 하나를 그린다. 고양이는 renderOriented(pose, ...) 와 같고,
+    // 강아지는 animIndex(CatAnim 순서)·frame 번호의 비트맵을 facing 반전 → gravity 회전 (hang 은 회전 없음)
+    static QImage renderFrame(int animIndex, int frame, const CatPose &pose, CatGravity gravity, CatFacing facing);
+
+    // 동물별 앵커 / 그립 (species 인자 없는 anchorIn / hangGripIn 은 현재 동물)
+    static QPoint anchorIn(CatGravity gravity, CatSpecies species);
+    static QPoint hangGripIn(CatFacing facing, CatSpecies species);
 
     // 알파 > 0 픽셀의 경계 사각형 (스프라이트 px). 비어 있으면 null QRect
     static QRect opaqueBounds(const QImage &sprite);

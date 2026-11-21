@@ -1,6 +1,9 @@
 #include "CatWidget.hpp"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QPainter>
+#include <QTransform>
 #include <algorithm>
 
 CatWidget::CatWidget(QWidget *parent)
@@ -19,7 +22,8 @@ CatWidget::CatWidget(QWidget *parent)
 QSize CatWidget::sizeHint() const
 {
     // 벽(회전)에서는 스프라이트가 Height x Width 로 서므로 세로를 Width 만큼 잡는다
-    return QSize(CatSprite::Width * 3, CatSprite::Width) * m_scale + QSize(32, 32);
+    const int w = std::max(int(CatSprite::Width), DogWidth);   // 강아지 프레임이 더 크다
+    return QSize(w * 3, w) * m_scale + QSize(32, 32);
 }
 
 void CatWidget::setAnim(CatAnim anim)
@@ -116,6 +120,24 @@ void CatWidget::setPixelScale(int scale)
     update();
 }
 
+void CatWidget::setAnimal(PreviewAnimal animal)
+{
+    if (animal == m_animal)
+        return;
+    m_animal = animal;
+    m_blendFrom.reset();
+    m_worldX = 0;
+    updateGeometry();
+    update();
+}
+
+void CatWidget::setSheetDir(const QString &dir)
+{
+    m_sheetDir = dir;
+    m_sheetCache.clear();
+    update();
+}
+
 void CatWidget::scheduleNext()
 {
     m_timer.start(animInfo(m_anim).frameMs[m_frame]);
@@ -160,12 +182,67 @@ CatPose CatWidget::currentPose() const
     return pose;
 }
 
+QImage CatWidget::dogFrame(QString *error)
+{
+    const QString dog = m_animal == PreviewAnimal::WhiteDog ? "white_dog" : "brown_dog";
+    const QString path = QDir(m_sheetDir).filePath(QString("%1/small/%2_small.png").arg(dog, animInfo(m_anim).name));
+    const QFileInfo fi(path);
+    if (!fi.exists()) {
+        *error = "시트 없음: " + QDir::toNativeSeparators(path);
+        return {};
+    }
+    // 수정 시각을 키에 넣어 시트를 고치면 다시 읽는다
+    const QString key = path + '|' + QString::number(fi.lastModified().toMSecsSinceEpoch());
+    auto it = m_sheetCache.find(key);
+    if (it == m_sheetCache.end())
+        it = m_sheetCache.insert(key, QImage(path).convertToFormat(QImage::Format_ARGB32));
+    const QImage &sheet = *it;
+    const int n = animInfo(m_anim).frameCount();
+    if (sheet.width() != DogWidth * n) {
+        *error = QString("시트 폭 %1 != %2 x %3 프레임: %4")
+                     .arg(sheet.width()).arg(DogWidth).arg(n).arg(QDir::toNativeSeparators(path));
+        return {};
+    }
+    return sheet.copy(m_frame * DogWidth, 0, DogWidth, sheet.height());
+}
+
+int CatWidget::groundRow() const
+{
+    return m_animal == PreviewAnimal::Cat ? CatSprite::Height - 1 : DogGroundRow;
+}
+
+QImage CatWidget::currentSprite()
+{
+    if (m_animal == PreviewAnimal::Cat)
+        return CatSprite::renderOriented(currentPose(), m_gravity, m_facing, m_palette);
+
+    QString error;
+    QImage img = dogFrame(&error);
+    if (img.isNull())
+        return img;
+    if (m_facing == CatFacing::Right)
+        img = img.flipped(Qt::Horizontal);
+    // 매달림은 고양이와 같이 바닥 방향으로만 쓴다
+    if (m_gravity == CatGravity::Down || m_anim == CatAnim::Hang)
+        return img;
+    QTransform t;
+    t.rotate(m_gravity == CatGravity::Left ? 90 : -90);   // CatSprite::renderOriented 와 같은 방향 (Left = 시계)
+    return img.transformed(t);
+}
+
 void CatWidget::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.fillRect(rect(), QColor(0xCA, 0xD3, 0xDA));
 
-    const QImage sprite = CatSprite::renderOriented(currentPose(), m_gravity, m_facing, m_palette);
+    const QImage sprite = currentSprite();
+    if (sprite.isNull()) {
+        QString error;
+        dogFrame(&error);
+        painter.setPen(Qt::black);
+        painter.drawText(rect().adjusted(8, 8, -8, -8), Qt::AlignCenter | Qt::TextWordWrap, error);
+        return;
+    }
     const QSize target = sprite.size() * m_scale;
 
     // 모든 좌표를 m_scale의 정수배로만 움직인다
@@ -185,13 +262,16 @@ void CatWidget::paintEvent(QPaintEvent *)
     const QColor line(0xB4, 0xBE, 0xC8), tick(0x9A, 0xA6, 0xB2);
     const int tw = std::max(1, m_scale / 2);
     if (m_gravity == CatGravity::Down) {
-        const int groundY = top + (CatSprite::Height - 1) * m_scale;
+        const int groundY = top + groundRow() * m_scale;
         painter.fillRect(QRect(0, groundY, width(), m_scale / 4 + 1), line);
         for (int x = cx % (4 * m_scale); x < width(); x += 4 * m_scale)
             painter.fillRect(QRect(x, groundY, tw, m_scale / 2), tick);
     } else {
         const int left = cx - target.width() / 2;   // 벽에서는 가로로 움직이지 않는다
-        const int x0 = m_gravity == CatGravity::Left ? left : left + (CatSprite::Height - 1) * m_scale;
+        // 회전 전 프레임 높이 h 에서 지면선 줄 g 가 Left(시계)는 h-1-g 열, Right(반시계)는 g 열로 간다
+        const int h = m_gravity == CatGravity::Left || m_gravity == CatGravity::Right ? sprite.width() : sprite.height();
+        const int x0 = m_gravity == CatGravity::Left ? left + (h - 1 - groundRow()) * m_scale
+                                                     : left + groundRow() * m_scale;
         painter.fillRect(QRect(x0, 0, m_scale / 4 + 1, height()), line);
         for (int y = top % (4 * m_scale); y < height(); y += 4 * m_scale)
             painter.fillRect(QRect(x0, y, m_scale / 2, tw), tick);

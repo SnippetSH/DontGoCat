@@ -20,6 +20,21 @@ namespace {
 
 int exportOriented(const QString &dir);
 
+// 강아지 시트 폴더: --sheets <dir>, 없으면 실행 파일 위치에서 위로 올라가며 sheets/white_dog 이 있는 sheets 를 찾는다
+QString findSheetDir(const QStringList &args)
+{
+    if (const qsizetype i = args.indexOf("--sheets"); i >= 0 && i + 1 < args.size())
+        return args[i + 1];
+    QDir d(QCoreApplication::applicationDirPath());
+    for (int up = 0; up < 5; ++up) {
+        if (QDir(d.filePath("sheets/white_dog")).exists())
+            return d.filePath("sheets");
+        if (!d.cdUp())
+            break;
+    }
+    return QDir::current().filePath("sheets");
+}
+
 // ccat --export <dir>: 애니메이션별 프레임 시트 PNG와 메타데이터, 지글거림 검사 결과 출력
 int exportSheets(const QString &dir)
 {
@@ -143,6 +158,13 @@ int main(int argc, char *argv[])
     window.setWindowTitle("CCat");
 
     auto *cat = new CatWidget;
+    cat->setSheetDir(findSheetDir(args));
+
+    auto *animalBox = new QComboBox;
+    animalBox->addItem("고양이");
+    animalBox->addItem("흰 강아지");
+    animalBox->addItem("갈색 강아지");
+    animalBox->setToolTip("강아지는 sheets/<white_dog|brown_dog>/small/<동작>_small.png 를 잘라서 재생 (--sheets 로 폴더 지정)");
 
     // 애니메이션 컨트롤
     auto *animBox = new QComboBox;
@@ -182,6 +204,7 @@ int main(int argc, char *argv[])
     });
 
     auto *animRow = new QHBoxLayout;
+    animRow->addWidget(animalBox);
     animRow->addWidget(animBox);
     animRow->addWidget(prevBtn);
     animRow->addWidget(playBtn);
@@ -221,6 +244,11 @@ int main(int argc, char *argv[])
         constexpr CatGravity gravities[] = {CatGravity::Down, CatGravity::Left, CatGravity::Right};
         cat->setGravity(gravities[i]);
     });
+    QObject::connect(animalBox, &QComboBox::currentIndexChanged, cat, [=](int i) {
+        constexpr PreviewAnimal animals[] = {PreviewAnimal::Cat, PreviewAnimal::WhiteDog, PreviewAnimal::BrownDog};
+        cat->setAnimal(animals[i]);
+        eyeSlider->setEnabled(i == 0);   // 강아지는 시트 그대로라 눈 뜸 조절 없음
+    });
     QObject::connect(move, &QCheckBox::toggled, cat, &CatWidget::setMoving);
     QObject::connect(scale, &QSpinBox::valueChanged, cat, &CatWidget::setPixelScale);
 
@@ -238,7 +266,23 @@ int main(int argc, char *argv[])
     layout->addLayout(animRow);
     layout->addLayout(optionRow);
 
+    // 시작 옵션: --animal cat|white|brown, --anim <동작 이름>, --frame N, --grab <png> (창을 그려 저장하고 종료)
+    const auto argAfter = [&](const char *name) -> QString {
+        const qsizetype i = args.indexOf(name);
+        return i >= 0 && i + 1 < args.size() ? args[i + 1] : QString();
+    };
+    if (const QString a = argAfter("--animal"); !a.isEmpty())
+        animalBox->setCurrentIndex(a == "white" ? 1 : a == "brown" ? 2 : 0);
+    if (const QString a = argAfter("--anim"); !a.isEmpty())
+        animBox->setCurrentIndex(std::max(0, int(animBox->findText(a))));
+    for (int f = argAfter("--frame").toInt(); f > 0; --f)
+        cat->stepForward();
+
     refreshLabels();
     window.show();
+    if (const QString out = argAfter("--grab"); !out.isEmpty()) {
+        QCoreApplication::processEvents();
+        return window.grab().save(out) ? 0 : 1;
+    }
     return app.exec();
 }

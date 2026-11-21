@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CatSprite.hpp"
+
 #include <QIcon>
 #include <QRect>
 #include <QWidget>
@@ -11,10 +13,11 @@ class QLabel;
 class QPushButton;
 class QSlider;
 class QTimer;
+class QToolButton;
 
 // 트레이 아이콘 클릭 시 뜨는 작은 팝업 (README 5.6).
 // - Qt::Tool | FramelessWindowHint | WindowStaysOnTopHint  (Qt::Popup 금지: 고양이 클릭이 바깥 클릭이 됨)
-// - 상단: 얼굴 아이콘 + "DontGoCat", (macOS) 메뉴 막대 아이콘 설정 버튼, 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스,
+// - 상단: 얼굴 버튼(누르면 고양이/흰 강아지/갈색 강아지 얼굴 메뉴로 동물 선택) + "DontGoCat", (macOS) 메뉴 막대 아이콘 설정 버튼, 배율 선택 1x/2x/3x/4x, 자동 시작 / 소리 체크박스,
 //   음량 슬라이더, 여백, 하단: 종료 버튼
 // - 팝업 하단과 종료 버튼 하단 = 바닥 y (작업표시줄 윗면) → 바닥의 고양이가 버튼을 덮을 수 있다
 // - 종료 버튼 크기 = Config::kQuitButtonW × kQuitButtonH (물리 px 고정, 배율과 무관)
@@ -34,6 +37,8 @@ public:
     bool soundChecked() const;
     void setVolume(int percent);              // 시그널 없이 슬라이더 값만 갱신
     int volume() const;
+    void setSpecies(CatSpecies species);      // 시그널 없이 얼굴 버튼만 갱신 (표시 직전 현재 동물 반영)
+    CatSpecies species() const { return m_species; }
 
     // 통계 영역 (README 5.14). 맨 위 ▲/▼ 토글 버튼으로 펼치면 기존 내용 위에 통계가 나타나고 팝업이 위로 커진다
     // (하단 = 바닥 y, 폭과 종료 버튼 위치는 펼침 여부와 무관하게 그대로).
@@ -48,8 +53,9 @@ public:
     QRect quitButtonDesktopRect() const;
     QRect desktopRect() const { return geometry(); }   // 팝업 전체 사각형 (CatBrain 의 커서 추적 영역 기준)
 
-    // 리소스(:/icons)의 tray_face_*.png 전 크기를 담은 얼굴 아이콘 (트레이/팝업 공용)
-    static QIcon faceIcon();
+    // 리소스(:/icons)의 얼굴 아이콘 전 크기 (트레이/팝업 공용): 고양이 tray_face_*, 강아지 <white|brown>_dog_face_*
+    static QIcon faceIcon(CatSpecies species = CatSpecies::Cat);
+    static QString speciesName(CatSpecies species);   // 메뉴 툴팁용 이름
 
 signals:
     void quitHovered();                                   // 종료 버튼 hover 진입
@@ -58,6 +64,7 @@ signals:
     void autoStartToggled(bool enabled);                  // 사용자가 체크박스를 눌렀다
     void soundToggled(bool enabled);                      // 사용자가 소리 체크박스를 눌렀다
     void volumeSelected(int percent);                     // 사용자가 음량을 정했다 (변경이 멈춘 뒤 한 번, 같은 값이면 나가지 않음)
+    void speciesSelected(CatSpecies species);             // 사용자가 얼굴 메뉴에서 다른 동물을 골랐다
     void showTrayIconClicked();                           // macOS: "메뉴 막대 아이콘 설정 열기" (Cmd+드래그로 지운 아이콘 복구)
     void closed();
 
@@ -73,8 +80,12 @@ private:
     void relayout(bool keepWidth = false);   // 크기 재계산 + 앵커 기준 재배치 (keepWidth: 표시 중 폭이 줄지 않게)
     QWidget *buildStatsPanel();
     void closeIfDeactivated();
+    void chooseSpecies();   // 얼굴 버튼: 동물 메뉴를 띄운다
 
     QPushButton *m_quitButton = nullptr;
+    QToolButton *m_faceButton = nullptr;
+    CatSpecies m_species = CatSpecies::Cat;
+    bool m_choosingSpecies = false;   // 동물 메뉴가 떠 있는 동안 (메뉴가 활성 창이 되어도 팝업을 닫지 않는다)
     QButtonGroup *m_scaleGroup = nullptr;
     QCheckBox *m_autoStart = nullptr;
     QCheckBox *m_sound = nullptr;

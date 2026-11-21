@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CatSprite.hpp"
 #include "QuitGuard.hpp"
 #include "Surface.hpp"
 
@@ -31,6 +32,7 @@ public:
     void updateSnapshot(const DesktopSnapshot &snapshot);   // 바닥 y, 트레이 사각형 대체값
     void setAutoStartKey(const QString &runKey) { m_autoStartKey = runKey; }   // 자동 시작 레지스트리 키 (테스트용 대체, 비면 실제 Run 키)
     void setSoundEnabled(bool enabled) { m_soundEnabled = enabled; }   // 팝업 소리 체크박스에 표시할 현재 설정
+    void setSpecies(CatSpecies species);   // 트레이 아이콘과 팝업 얼굴을 이 동물로 (시그널 없음)
     void setVolume(int percent) { m_volume = percent; }                // 팝업 음량 슬라이더에 표시할 현재 설정
     void setStats(const CatStats *stats);   // 팝업 통계 영역의 데이터 원본 (소유권 없음, QuitPopup::setStatsSource 로 전달)
 
@@ -59,6 +61,7 @@ signals:
     void blockReleased();            // 방해 실패 / 팝업 닫힘 → 고양이 비켜 앉음
     void scaleChanged(int scale);
     void soundChanged(bool enabled);   // 사용자가 팝업에서 소리를 켜거나 껐다
+    void speciesChanged(CatSpecies species);   // 사용자가 팝업 얼굴 메뉴에서 다른 동물을 골랐다
     void volumeChanged(int percent);   // 사용자가 팝업에서 음량을 바꿨다
     void quitRequested();
     void quitAttempted(bool blocked);   // QuitGuard::attempt() 1회마다 (hover 진입 / 방해 중 고양이 클릭). 통계 전용
@@ -81,6 +84,7 @@ private:
     int m_scale = 3;
     bool m_blocking = false;
     bool m_soundEnabled = true;
+    CatSpecies m_species = CatSpecies::Cat;
     int m_volume = 100;
     bool m_near = false;
     qint64 m_popupClosedMs = -1;     // 팝업이 마지막으로 닫힌 시각 (m_clock 기준)

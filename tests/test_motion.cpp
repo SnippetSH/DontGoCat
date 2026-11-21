@@ -118,6 +118,48 @@ static void testSpriteAnchor()
 }
 
 // ── 1. 낙하/착지/터널링 ──────────────────────────────────
+// 강아지 (CatSprite::setSpecies): 비트맵 프레임 크기, 지면선(앵커), 회전, 매달림 그립 칸
+static void testDogSpecies()
+{
+    std::printf("[dog species]\n");
+    for (CatSpecies sp : {CatSpecies::WhiteDog, CatSpecies::BrownDog}) {
+        CatSprite::setSpecies(sp);
+        CHECK(CatSprite::canvasSide() == CatSprite::DogWidth && CatSprite::frameHeight() == CatSprite::DogHeight,
+              "canvas %d frame %d", CatSprite::canvasSide(), CatSprite::frameHeight());
+        CHECK(CatSprite::stretchLiftSpritePx() == 0, "lift");
+        CHECK(CatSprite::anchorIn(CatGravity::Down) == QPoint(20, 28), "down");
+        CHECK(CatSprite::anchorIn(CatGravity::Left) == QPoint(4, 20), "left");
+        CHECK(CatSprite::anchorIn(CatGravity::Right) == QPoint(28, 20), "right");
+        // 서 있는 동작의 가장 아래 불투명 줄 = 지면선 바로 위 (27)
+        int lowest = -1;
+        for (CatAnim a : {CatAnim::Idle, CatAnim::Walk, CatAnim::Run})
+            for (int f = 0; f < animInfo(a).frameCount(); ++f) {
+                const QImage img = CatSprite::renderFrame(int(a), f, keyPose(a, f), CatGravity::Down, CatFacing::Left);
+                CHECK(img.size() == QSize(CatSprite::DogWidth, CatSprite::DogHeight), "%s %d size", animInfo(a).name, f);
+                lowest = std::max(lowest, CatSprite::opaqueBounds(img).bottom());
+            }
+        CHECK(lowest == CatSprite::DogGroundLine - 1, "standing lowest row %d", lowest);
+        // 회전: Left 는 지면선이 왼쪽 열 쪽, 회전 결과 크기 32x40
+        const QImage cw = CatSprite::renderFrame(int(CatAnim::Climb), 0, keyPose(CatAnim::Climb, 0),
+                                                 CatGravity::Left, CatFacing::Left);
+        CHECK(cw.size() == QSize(CatSprite::DogHeight, CatSprite::DogWidth), "rotated size");
+        CHECK(CatSprite::opaqueBounds(cw).left() >= CatSprite::anchorIn(CatGravity::Left).x(), "climb inside wall");
+        // 매달림: 40x40, 회전 없음, 그립 칸이 불투명 (Left (15,20) → 칸 (14..15, 19..20) / Right 반전)
+        for (CatFacing fc : {CatFacing::Left, CatFacing::Right})
+            for (int f = 0; f < animInfo(CatAnim::Hang).frameCount(); ++f) {
+                const QImage h = CatSprite::renderFrame(int(CatAnim::Hang), f, keyPose(CatAnim::Hang, f),
+                                                        CatGravity::Left, fc);
+                const QPoint g = CatSprite::hangGripIn(fc);
+                CHECK(h.size() == QSize(CatSprite::DogWidth, CatSprite::DogWidth), "hang size");
+                CHECK(qAlpha(h.pixel(g.x() - 1, g.y() - 1)) > 0 && qAlpha(h.pixel(g.x(), g.y())) > 0,
+                      "hang grip opaque f%d", f);
+            }
+    }
+    CatSprite::setSpecies(CatSpecies::Cat);
+    CHECK(CatSprite::canvasSide() == CatSprite::Width && CatSprite::anchorIn(CatGravity::Down) == QPoint(16, 23),
+          "back to cat");
+}
+
 static void testFall()
 {
     std::printf("[fall / spawn]\n");
@@ -1051,6 +1093,7 @@ int main(int argc, char **argv)
                                                         : std::make_unique<QCoreApplication>(argc, argv);
 
     testSpriteAnchor();
+    testDogSpecies();
     testFall();
     testWalk();
     testWindowFollow();

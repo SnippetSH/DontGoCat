@@ -31,6 +31,7 @@ add_library(ccat_sprite STATIC
     src/include/CatSprite.hpp
     src/module/CatSprite.cpp
     src/module/CatHangFrames.inc
+    src/module/DogFrames.inc
     src/include/CatAnim.hpp
     src/module/CatAnim.cpp
 )

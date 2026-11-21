@@ -61,7 +61,7 @@ CatOverlay::CatOverlay(QWidget *parent)
 void CatOverlay::setScale(int scale)
 {
     m_scale = qBound(Config::kMinScale, scale, Config::kMaxScale);
-    setFixedSize(CatSprite::Width * m_scale, CatSprite::Width * m_scale);
+    setFixedSize(CatSprite::canvasSide() * m_scale, CatSprite::canvasSide() * m_scale);
     if (m_hasFrame)
         place();
     update();
@@ -83,7 +83,7 @@ void CatOverlay::place()
 {
     // 스프라이트는 창 왼쪽 위(0,0)부터 그린다. 앵커가 anchorDesktop 에 오도록 창 왼쪽 위를 계산.
     const QPoint topLeft = m_anchorDesktop - CatSprite::anchorIn(m_gravity) * m_scale;
-    const int side = CatSprite::Width * m_scale;
+    const int side = CatSprite::canvasSide() * m_scale;
     const QRect want(topLeft, QSize(side, side));
 #ifdef Q_OS_MACOS
     // macOS 는 Qt 좌표 = 전역 포인트 좌표이고 DPI 로 창 크기가 바뀌지 않는다 → Qt 로 옮기기만 한다
@@ -111,7 +111,7 @@ bool CatOverlay::nativeEvent(const QByteArray &eventType, void *message, qintptr
 {
     // DPI 가 다른 모니터로 넘어가도 창 크기는 물리 px 그대로 (DPI 비율로 줄거나 늘지 않게)
     if (DpiSizeLock::handle(eventType, message, result,
-                            QSize(CatSprite::Width * m_scale, CatSprite::Width * m_scale)))
+                            QSize(CatSprite::canvasSide() * m_scale, CatSprite::canvasSide() * m_scale)))
         return true;
     return QWidget::nativeEvent(eventType, message, result);
 }

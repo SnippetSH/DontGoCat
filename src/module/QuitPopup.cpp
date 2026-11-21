@@ -19,6 +19,9 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMenu>
+#include <QProxyStyle>
+#include <QToolButton>
 #include <QPainter>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -116,14 +119,21 @@ QuitPopup::QuitPopup(QWidget *parent)
     // 상단: 얼굴 아이콘 + "DontGoCat" + "v<버전>" (CCAT_VERSION 은 CMake project(VERSION) 에서 주입)
     auto *header = new QHBoxLayout;
     header->setSpacing(kGapPx);
-    auto *icon = new QLabel(this);
-    icon->setPixmap(faceIcon().pixmap(kIconPx, kIconPx));
-    icon->setFixedSize(kIconPx, kIconPx);
+    m_faceButton = new QToolButton(this);
+    m_faceButton->setObjectName(QStringLiteral("face"));
+    m_faceButton->setIcon(faceIcon(m_species));
+    m_faceButton->setIconSize(QSize(kIconPx, kIconPx));
+    m_faceButton->setFixedSize(kIconPx, kIconPx);
+    m_faceButton->setAutoRaise(true);
+    m_faceButton->setFocusPolicy(Qt::NoFocus);
+    m_faceButton->setCursor(Qt::PointingHandCursor);
+    m_faceButton->setToolTip(QString::fromUtf8("동물 바꾸기"));
+    connect(m_faceButton, &QToolButton::clicked, this, &QuitPopup::chooseSpecies);
     auto *title = new QLabel(QStringLiteral("DontGoCat"), this);
     title->setObjectName(QStringLiteral("title"));
     auto *version = new QLabel(QStringLiteral("v" CCAT_VERSION), this);
     version->setObjectName(QStringLiteral("version"));
-    header->addWidget(icon);
+    header->addWidget(m_faceButton);
     header->addWidget(title);
     header->addWidget(version);
     header->addStretch();
@@ -172,7 +182,7 @@ QuitPopup::QuitPopup(QWidget *parent)
     connect(m_autoStart, &QCheckBox::clicked, this, &QuitPopup::autoStartToggled);
 
     // 소리 체크박스 (표시 전에 TrayController 가 현재 설정으로 맞춘다)
-    m_sound = new QCheckBox(QString::fromUtf8("고양이 소리"), this);
+    m_sound = new QCheckBox(QString::fromUtf8("동물 소리"), this);   // 지금은 고양이만 소리가 있다 (강아지는 무음)
     m_sound->setObjectName(QStringLiteral("sound"));
     m_sound->setFocusPolicy(Qt::NoFocus);
     m_sound->setChecked(true);
@@ -275,12 +285,75 @@ int QuitPopup::volume() const
     return m_volume->value();
 }
 
-QIcon QuitPopup::faceIcon()
+QIcon QuitPopup::faceIcon(CatSpecies species)
 {
+    const QString pattern = species == CatSpecies::WhiteDog ? QStringLiteral(":/icons/white_dog_face_%1.png")
+                          : species == CatSpecies::BrownDog ? QStringLiteral(":/icons/brown_dog_face_%1.png")
+                                                            : QStringLiteral(":/icons/tray_face_%1.png");
     QIcon icon;
     for (int size : {16, 24, 32, 48, 64})
-        icon.addFile(QStringLiteral(":/icons/tray_face_%1.png").arg(size), QSize(size, size));
+        icon.addFile(pattern.arg(size), QSize(size, size));
     return icon;
+}
+
+QString QuitPopup::speciesName(CatSpecies species)
+{
+    switch (species) {
+    case CatSpecies::WhiteDog: return QString::fromUtf8("흰 강아지");
+    case CatSpecies::BrownDog: return QString::fromUtf8("갈색 강아지");
+    default:                   return QString::fromUtf8("고양이");
+    }
+}
+
+void QuitPopup::setSpecies(CatSpecies species)
+{
+    m_species = species;
+    m_faceButton->setIcon(faceIcon(species));
+}
+
+void QuitPopup::chooseSpecies()
+{
+    // 메뉴 아이콘을 팝업 얼굴과 같은 크기로 (기본 16px 은 얼굴이 뭉개진다). 메뉴보다 오래 살아야 하므로 먼저 만든다
+    struct IconSizeStyle : QProxyStyle
+    {
+        int pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *w) const override
+        {
+            return m == PM_SmallIconSize ? kIconPx : QProxyStyle::pixelMetric(m, o, w);
+        }
+    };
+    IconSizeStyle iconStyle;
+
+    // 선택지는 각 동물의 얼굴 (이름은 툴팁). 지금 동물은 체크 표시
+    QMenu menu(this);
+    menu.setStyle(&iconStyle);
+    menu.setToolTipsVisible(true);
+    menu.setStyleSheet(QStringLiteral("QMenu { background: #FDF5E3; border: 1px solid #311410; }"
+                                      "QMenu::item { padding: 4px 8px 4px 28px; }"
+                                      "QMenu::item:selected { background: #FDE3B4; }"));
+    for (CatSpecies s : {CatSpecies::Cat, CatSpecies::WhiteDog, CatSpecies::BrownDog}) {
+        QAction *a = menu.addAction(faceIcon(s), QString());
+        a->setToolTip(speciesName(s));
+        a->setCheckable(true);
+        a->setChecked(s == m_species);
+        a->setData(int(s));
+    }
+
+    m_choosingSpecies = true;   // 메뉴가 뜨면 팝업이 비활성화되므로 그동안은 닫지 않는다
+    QAction *picked = menu.exec(m_faceButton->mapToGlobal(QPoint(0, m_faceButton->height())));
+    m_choosingSpecies = false;
+
+    if (picked) {
+        const auto s = CatSpecies(picked->data().toInt());
+        if (s != m_species) {
+            setSpecies(s);
+            emit speciesSelected(s);
+        }
+    }
+    // 메뉴가 닫혔다: 앱이 아직 활성이면 팝업으로 포커스를 돌리고, 다른 앱으로 넘어갔으면 닫는다
+    if (QGuiApplication::applicationState() == Qt::ApplicationActive)
+        activateWindow();
+    else
+        closeIfDeactivated();
 }
 
 void QuitPopup::setScale(int scale)
@@ -350,6 +423,8 @@ QRect QuitPopup::quitButtonDesktopRect() const
 
 void QuitPopup::closeIfDeactivated()
 {
+    if (m_choosingSpecies)
+        return;
     if (isVisible() && m_wasActive)
         hide();
 }

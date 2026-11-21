@@ -22,8 +22,28 @@
 #endif
 
 Q_LOGGING_CATEGORY(lcStats, "ccat.stats")
+Q_LOGGING_CATEGORY(lcApp, "ccat.app")
 
 namespace {
+
+// QSettings 의 동물 값 (Config::kSettingsSpeciesKey)
+const char *speciesKey(CatSpecies s)
+{
+    switch (s) {
+    case CatSpecies::WhiteDog: return "white_dog";
+    case CatSpecies::BrownDog: return "brown_dog";
+    default:                   return "cat";
+    }
+}
+
+CatSpecies speciesFromKey(const QString &key)
+{
+    if (key == QLatin1String("white_dog"))
+        return CatSpecies::WhiteDog;
+    if (key == QLatin1String("brown_dog"))
+        return CatSpecies::BrownDog;
+    return CatSpecies::Cat;
+}
 
 constexpr int kSpawnSearchStepPx = 64;   // 주 모니터 중앙에서 좌우로 바닥이 뚫린 지점을 찾는 간격
 
@@ -133,13 +153,16 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     }
     setScale(scale);
 
-    // 소리: QSettings (기본 켜짐)
+    // 소리: QSettings (기본 켜짐). 실제 재생은 고양이일 때만 (setSpecies)
     const bool sound = QSettings().value(Config::kSettingsSoundKey, true).toBool();
-    m_voice.setEnabled(sound);
+    m_soundSetting = sound;
     m_tray.setSoundEnabled(sound);
     const int volume = std::clamp(QSettings().value(Config::kSettingsVolumeKey, Config::kMeowVolume).toInt(), 0, 100);
     m_voice.setVolume(volume);
     m_tray.setVolume(volume);
+
+    // 동물: QSettings (기본 고양이). 시작 전이므로 새로 등장시키지 않고 그림·크기만 맞춘다
+    setSpecies(speciesFromKey(QSettings().value(Config::kSettingsSpeciesKey).toString()), false);
 
     m_tickTimer.setTimerType(Qt::PreciseTimer);
     m_tickTimer.setInterval(Config::kTickMs);
@@ -173,8 +196,13 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
         QSettings().setValue(Config::kSettingsScaleKey, m_scale);
     });
 
+    connect(&m_tray, &TrayController::speciesChanged, this, [this](CatSpecies species) {
+        setSpecies(species, true);
+        QSettings().setValue(Config::kSettingsSpeciesKey, speciesKey(species));
+    });
     connect(&m_tray, &TrayController::soundChanged, this, [this](bool enabled) {
-        m_voice.setEnabled(enabled);
+        m_soundSetting = enabled;
+        m_voice.setEnabled(enabled && CatSprite::species() == CatSpecies::Cat);
         QSettings().setValue(Config::kSettingsSoundKey, enabled);
     });
     connect(&m_tray, &TrayController::volumeChanged, this, [this](int percent) {
@@ -297,6 +325,31 @@ void CatApp::setScale(int scale)
     m_haveImage = false;
     if (m_tickTimer.isActive())
         m_scanner.scanNow();   // 최소 세그먼트 길이 등이 바뀌므로 즉시 다시 스캔
+}
+
+void CatApp::setSpecies(CatSpecies species, bool respawn)
+{
+    const bool changed = species != CatSprite::species();
+    CatSprite::setSpecies(species);
+    m_tray.setSpecies(species);
+    m_voice.setEnabled(m_soundSetting && species == CatSpecies::Cat);   // 강아지는 소리 없음
+    m_overlay.setScale(m_scale);   // 오버레이 창 크기 = 동물 캔버스 (CatSprite::canvasSide)
+    m_haveImage = false;
+    if (!changed || !respawn || !m_tickTimer.isActive())
+        return;
+
+    // 새로 등장: 잡혀 있었으면 놓고, 시작 때처럼 주 모니터 바닥 위에서 다시 나타난다
+    if (m_grabbing) {
+        m_brain.releaseGrab();
+        m_grabbing = false;
+    }
+    m_scanner.scanNow();   // 몸 두께(CatSprite::frameHeight) 가 바뀌어 면 계산이 달라진다
+    const DesktopSnapshot &snapshot = m_scanner.snapshot();
+    m_body.spawn(snapshot, spawnPoint(snapshot));
+    m_brain.respawned();
+    m_lastTravelledPx = m_body.travelledPx();   // 순간이동한 거리는 이동 거리 통계에 넣지 않는다
+    qCInfo(lcApp) << "species ->" << speciesKey(species);
+    render();
 }
 
 QPoint CatApp::spawnPoint(const DesktopSnapshot &snapshot) const
@@ -436,7 +489,7 @@ void CatApp::render()
     const CatFrame f = m_body.frame();
     if (!m_haveImage || f.anim != m_lastAnim || f.animFrame != m_lastFrame || f.facing != m_lastFacing
         || f.gravity != m_lastGravity) {
-        m_image = CatSprite::renderOriented(f.pose, f.gravity, f.facing);
+        m_image = CatSprite::renderFrame(int(f.anim), f.animFrame, f.pose, f.gravity, f.facing);
         m_lastAnim = f.anim;
         m_lastFrame = f.animFrame;
         m_lastFacing = f.facing;

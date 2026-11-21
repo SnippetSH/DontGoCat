@@ -223,6 +223,12 @@ void CatBrain::enterAutonomous(const char *why)
     beginIntent(State::Autonomous, why);
 }
 
+void CatBrain::respawned()
+{
+    abortRoute();
+    restartIntent();
+}
+
 void CatBrain::restartIntent()
 {
     // 낙하가 끝났다 → 같은 의도로 처음부터 다시 (경로는 착지 위치에서 새로 계획)
@@ -823,7 +829,7 @@ std::optional<SurfacePoint> CatBrain::findPlayGoal() const
         return std::nullopt;
 
     // 도달 가능 판정 (README 5.9): 바닥 세그먼트 바로 위 catHeight 이내 / 벽 세그먼트의 고양이 쪽 catHeight 이내
-    const int height = CatSprite::Height * m_scale;
+    const int height = CatSprite::frameHeight() * m_scale;
     struct Cand
     {
         const SurfaceSegment *seg;

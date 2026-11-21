@@ -49,6 +49,9 @@ public:
 
     void start();   // 스캔 1회 → 주 모니터 바닥 중앙 위에서 spawn → 오버레이 표시 → 타이머 시작
     void setScale(int scale);
+    // 화면의 동물을 바꾼다 (README: 팝업 얼굴 메뉴). respawn 이면 지금 동물을 없애고 시작 때처럼 새로 등장
+    void setSpecies(CatSpecies species, bool respawn);
+    CatSpecies species() const { return CatSprite::species(); }
 
     // 하네스/점검용 접근자
     CatBrain &brain() { return m_brain; }
@@ -100,6 +103,7 @@ private:
     QElapsedTimer m_clock;
     qint64 m_lastTickMs = 0;
     int m_scale = Config::kDefaultScale;
+    bool m_soundSetting = true;        // 팝업 "동물 소리" 체크 (강아지는 소리가 없어 실제 재생은 고양이일 때만)
     bool m_visible = true;
     bool m_brainClickThrough = true;   // CatBrain::wantClickThrough 마지막 값
     bool m_grabbing = false;

@@ -53,6 +53,10 @@ TrayController::TrayController(QObject *parent, QuitGuard::Rng rng)
         if (!AutoStart::setEnabled(enabled, m_autoStartKey))
             m_popup->setAutoStartChecked(!enabled);
     });
+    connect(m_popup, &QuitPopup::speciesSelected, this, [this](CatSpecies species) {
+        setSpecies(species);
+        emit speciesChanged(species);
+    });
     connect(m_popup, &QuitPopup::soundToggled, this, [this](bool enabled) {
         m_soundEnabled = enabled;
         emit soundChanged(enabled);
@@ -75,6 +79,13 @@ TrayController::~TrayController()
 {
     m_tray.hide();
     delete m_popup;
+}
+
+void TrayController::setSpecies(CatSpecies species)
+{
+    m_species = species;
+    m_tray.setIcon(QuitPopup::faceIcon(species));
+    m_popup->setSpecies(species);
 }
 
 void TrayController::setScale(int scale)
@@ -261,7 +272,7 @@ void TrayController::showPopupForReopen(QPoint catAnchor)
     const QPoint probe = catAnchor - QPoint(0, 1);
     const MonitorInfo *mon = monitorInfoAt(probe);
     const int monRight = mon ? mon->bounds.x() + mon->bounds.width() : catAnchor.x() + m_popup->width() * 2;
-    const int offset = CatSprite::Width * m_scale / 2 + kReopenGapPx + m_popup->width() / 2;
+    const int offset = CatSprite::canvasSide() * m_scale / 2 + kReopenGapPx + m_popup->width() / 2;
     const bool right = catAnchor.x() + offset + m_popup->width() / 2 <= monRight;
     const int x = catAnchor.x() + (right ? offset : -offset);
     openPopupAt(QRect(QPoint(x, probe.y()), QSize(1, 1)));
@@ -292,6 +303,7 @@ void TrayController::openPopupAt(const QRect &anchor)
 
     m_popup->setAutoStartChecked(AutoStart::isEnabled(m_autoStartKey));   // 체크 상태 = 레지스트리 값 존재 여부
     m_popup->setSoundChecked(m_soundEnabled);
+    m_popup->setSpecies(m_species);
     m_popup->setVolume(m_volume);
     m_popup->setScale(m_scale);
     m_popup->showAt(anchor, floorYAt(anchor.center()), monitor);
