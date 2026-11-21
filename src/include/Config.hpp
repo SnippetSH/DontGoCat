@@ -10,6 +10,7 @@ namespace Config {
 inline constexpr int kDefaultScale = 3;
 inline constexpr int kMinScale = 1;
 inline constexpr int kMaxScale = 4;
+inline constexpr int kMaxDogScale = 3;   // 강아지는 그림이 커서 3배까지 (CatSprite::maxScale / convertScale)
 inline constexpr const char *kSettingsOrg = "DontGoCat";
 inline constexpr const char *kSettingsApp = "DontGoCat";
 inline constexpr const char *kSettingsScaleKey = "scale";

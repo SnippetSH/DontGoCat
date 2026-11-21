@@ -162,7 +162,8 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     m_tray.setVolume(volume);
 
     // 동물: QSettings (기본 고양이). 시작 전이므로 새로 등장시키지 않고 그림·크기만 맞춘다
-    setSpecies(speciesFromKey(QSettings().value(Config::kSettingsSpeciesKey).toString()), false);
+    // 저장된 배율은 그 동물의 실제 배율이므로 변환하지 않고 상한만 적용한다
+    setSpecies(speciesFromKey(QSettings().value(Config::kSettingsSpeciesKey).toString()), m_scale, false);
 
     m_tickTimer.setTimerType(Qt::PreciseTimer);
     m_tickTimer.setInterval(Config::kTickMs);
@@ -197,8 +198,10 @@ CatApp::CatApp(std::optional<int> scaleOverride, QObject *parent)
     });
 
     connect(&m_tray, &TrayController::speciesChanged, this, [this](CatSpecies species) {
-        setSpecies(species, true);
+        // 강아지 그림이 더 커서 화면 크기가 비슷하도록 배율도 함께 바꾼다 (CatSprite::convertScale)
+        setSpecies(species, CatSprite::convertScale(m_scale, CatSprite::species(), species), true);
         QSettings().setValue(Config::kSettingsSpeciesKey, speciesKey(species));
+        QSettings().setValue(Config::kSettingsScaleKey, m_scale);
     });
     connect(&m_tray, &TrayController::soundChanged, this, [this](bool enabled) {
         m_soundSetting = enabled;
@@ -314,7 +317,7 @@ void CatApp::updateClickThrough()
 
 void CatApp::setScale(int scale)
 {
-    m_scale = std::clamp(scale, Config::kMinScale, Config::kMaxScale);
+    m_scale = std::clamp(scale, Config::kMinScale, CatSprite::maxScale(CatSprite::species()));
     m_scanner.setScale(m_scale);
     m_overlay.setScale(m_scale);
     m_body.setScale(m_scale);
@@ -327,14 +330,13 @@ void CatApp::setScale(int scale)
         m_scanner.scanNow();   // 최소 세그먼트 길이 등이 바뀌므로 즉시 다시 스캔
 }
 
-void CatApp::setSpecies(CatSpecies species, bool respawn)
+void CatApp::setSpecies(CatSpecies species, int scale, bool respawn)
 {
     const bool changed = species != CatSprite::species();
     CatSprite::setSpecies(species);
     m_tray.setSpecies(species);
     m_voice.setEnabled(m_soundSetting && species == CatSpecies::Cat);   // 강아지는 소리 없음
-    m_overlay.setScale(m_scale);   // 오버레이 창 크기 = 동물 캔버스 (CatSprite::canvasSide)
-    m_haveImage = false;
+    setScale(scale);   // 새 동물의 상한으로 제한. 오버레이 창 크기 = 동물 캔버스 (CatSprite::canvasSide) 도 여기서 맞춘다
     if (!changed || !respawn || !m_tickTimer.isActive())
         return;
 

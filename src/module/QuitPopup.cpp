@@ -150,7 +150,7 @@ QuitPopup::QuitPopup(QWidget *parent)
     connect(showTrayIcon, &QPushButton::clicked, this, &QuitPopup::showTrayIconClicked);
 #endif
 
-    // 중단: 배율 1x~4x (배타 선택)
+    // 중단: 배율 1x~4x (배타 선택). 강아지는 3x 까지라 4x 버튼을 숨긴다 (setScale)
     auto *scales = new QHBoxLayout;
     scales->setSpacing(kScaleButtonGap);
     m_scaleGroup = new QButtonGroup(this);
@@ -309,6 +309,7 @@ void QuitPopup::setSpecies(CatSpecies species)
 {
     m_species = species;
     m_faceButton->setIcon(faceIcon(species));
+    setScale(m_scale);   // 배율 버튼 수와 선택을 이 동물의 상한에 맞춘다
 }
 
 void QuitPopup::chooseSpecies()
@@ -358,7 +359,11 @@ void QuitPopup::chooseSpecies()
 
 void QuitPopup::setScale(int scale)
 {
-    m_scale = qBound(Config::kMinScale, scale, Config::kMaxScale);
+    const int maxScale = CatSprite::maxScale(m_species);
+    m_scale = qBound(Config::kMinScale, scale, maxScale);
+    for (int s = Config::kMinScale; s <= Config::kMaxScale; ++s)
+        if (auto *b = m_scaleGroup->button(s))
+            b->setVisible(s <= maxScale);   // 상한을 넘는 배율 버튼은 숨긴다
     if (auto *b = m_scaleGroup->button(m_scale))
         b->setChecked(true);
     relayout();

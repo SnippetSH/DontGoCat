@@ -158,6 +158,28 @@ static void testDogSpecies()
     CatSprite::setSpecies(CatSpecies::Cat);
     CHECK(CatSprite::canvasSide() == CatSprite::Width && CatSprite::anchorIn(CatGravity::Down) == QPoint(16, 23),
           "back to cat");
+
+    // 배율 상한과 동물 전환 시 배율 변환 (강아지 그림이 더 커서 화면 크기를 비슷하게 맞춘다)
+    const CatSpecies cat = CatSpecies::Cat;
+    CHECK(CatSprite::maxScale(cat) == 4, "cat max %d", CatSprite::maxScale(cat));
+    for (CatSpecies dog : {CatSpecies::WhiteDog, CatSpecies::BrownDog}) {
+        CHECK(CatSprite::maxScale(dog) == 3, "dog max %d", CatSprite::maxScale(dog));
+        const int toDog[] = {1, 1, 2, 3};   // 고양이 1, 2, 3, 4 →
+        for (int s = 1; s <= 4; ++s)
+            CHECK(CatSprite::convertScale(s, cat, dog) == toDog[s - 1], "cat %d -> dog %d", s,
+                  CatSprite::convertScale(s, cat, dog));
+        const int toCat[] = {2, 3, 4};      // 강아지 1, 2, 3 →
+        for (int s = 1; s <= 3; ++s)
+            CHECK(CatSprite::convertScale(s, dog, cat) == toCat[s - 1], "dog %d -> cat %d", s,
+                  CatSprite::convertScale(s, dog, cat));
+        CHECK(CatSprite::convertScale(4, dog, cat) == 4, "dog 4 (out of range) -> cat");
+        for (int s = 1; s <= 3; ++s)   // 강아지끼리는 그대로
+            CHECK(CatSprite::convertScale(s, dog, CatSpecies::WhiteDog) == s
+                      && CatSprite::convertScale(s, dog, CatSpecies::BrownDog) == s, "dog -> dog %d", s);
+    }
+    for (int s = 1; s <= 4; ++s)
+        CHECK(CatSprite::convertScale(s, cat, cat) == s, "cat -> cat %d", s);
+    CHECK(CatSprite::convertScale(9, cat, cat) == 4 && CatSprite::convertScale(0, cat, cat) == 1, "clamped");
 }
 
 static void testFall()

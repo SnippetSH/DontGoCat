@@ -1,5 +1,7 @@
 #include "CatSprite.hpp"
 
+#include "Config.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -613,6 +615,23 @@ void CatSprite::setSpecies(CatSpecies species)
 CatSpecies CatSprite::species()
 {
     return g_species;
+}
+
+int CatSprite::maxScale(CatSpecies species)
+{
+    return species == CatSpecies::Cat ? Config::kMaxScale : Config::kMaxDogScale;
+}
+
+int CatSprite::convertScale(int scale, CatSpecies from, CatSpecies to)
+{
+    const bool fromCat = from == CatSpecies::Cat;
+    const bool toCat = to == CatSpecies::Cat;
+    scale = std::clamp(scale, Config::kMinScale, maxScale(from));
+    if (fromCat && !toCat)
+        scale = scale <= 2 ? 1 : scale - 1;
+    else if (!fromCat && toCat)
+        scale = scale + 1;
+    return std::clamp(scale, Config::kMinScale, maxScale(to));
 }
 
 int CatSprite::frameHeight()

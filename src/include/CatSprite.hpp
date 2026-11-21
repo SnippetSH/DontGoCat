@@ -139,6 +139,14 @@ public:
     // 강아지는 animIndex(CatAnim 순서)·frame 번호의 비트맵을 facing 반전 → gravity 회전 (hang 은 회전 없음)
     static QImage renderFrame(int animIndex, int frame, const CatPose &pose, CatGravity gravity, CatFacing facing);
 
+    // 동물별 배율 상한: 고양이 Config::kMaxScale, 강아지 Config::kMaxDogScale
+    static int maxScale(CatSpecies species);
+    // 동물을 from → to 로 바꿀 때의 배율. 강아지 그림이 고양이보다 커서 화면 크기가 비슷하도록 맞춘다.
+    //   고양이 → 강아지: 1, 2 → 1 / 3 → 2 / 4 → 3
+    //   강아지 → 고양이: 1 → 2 / 2 → 3 / 3 → 4
+    //   고양이끼리, 강아지끼리: 그대로. 결과는 항상 to 의 [kMinScale, maxScale] 안
+    static int convertScale(int scale, CatSpecies from, CatSpecies to);
+
     // 동물별 앵커 / 그립 (species 인자 없는 anchorIn / hangGripIn 은 현재 동물)
     static QPoint anchorIn(CatGravity gravity, CatSpecies species);
     static QPoint hangGripIn(CatFacing facing, CatSpecies species);

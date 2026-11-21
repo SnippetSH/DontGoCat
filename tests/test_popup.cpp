@@ -86,6 +86,43 @@ static void testPopupLayout()
 }
 
 // 종료 버튼 hover / 클릭, 고양이 클릭을 직접 흘려 보내 TrayController 판정을 검사한다.
+// 강아지는 3x 까지: 4x 버튼을 숨기고 선택도 3x 로 내린다. 고양이로 돌아오면 4x 가 다시 보인다
+static void testDogScaleButtons()
+{
+    std::printf("[1b] dog scale buttons\n");
+    QuitPopup p;
+    const auto visibleScales = [&p] {
+        int n = 0;
+        for (auto *b : p.findChildren<QPushButton *>(QStringLiteral("scale")))
+            n += b->isVisibleTo(&p) ? 1 : 0;
+        return n;
+    };
+    const auto checkedText = [&p] {
+        for (auto *b : p.findChildren<QPushButton *>(QStringLiteral("scale")))
+            if (b->isChecked())
+                return b->text();
+        return QString();
+    };
+    p.setScale(4);
+    p.showAt(QRect(1800, 1000, 32, 32), 1040, QRect(0, 0, 1920, 1080));
+    const int catWidth = p.width();
+    CHECK(visibleScales() == 4 && checkedText() == "4x", "cat: %d buttons", visibleScales());
+    for (CatSpecies dog : {CatSpecies::WhiteDog, CatSpecies::BrownDog}) {
+        p.setSpecies(dog);
+        CHECK(visibleScales() == 3, "dog: %d buttons", visibleScales());
+        CHECK(checkedText() == "3x", "dog: checked %s", checkedText().toUtf8().constData());
+        p.setScale(4);   // 범위를 넘는 값은 3x 로
+        CHECK(checkedText() == "3x", "dog: setScale(4) checked %s", checkedText().toUtf8().constData());
+        std::printf("dog popup width %d (cat %d)\n", p.width(), catWidth);
+        for (auto *b : p.findChildren<QPushButton *>(QStringLiteral("scale")))
+            if (b->isVisibleTo(&p))
+                std::printf("  %s x=%d w=%d\n", b->text().toUtf8().constData(), b->x(), b->width());
+    }
+    p.setSpecies(CatSpecies::Cat);
+    CHECK(visibleScales() == 4 && checkedText() == "3x", "back to cat: %d buttons", visibleScales());
+    CHECK(p.width() == catWidth, "back to cat: width %d (was %d)", p.width(), catWidth);
+}
+
 static void testClickRules()
 {
     std::printf("[2] click rules\n");
@@ -524,6 +561,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     testPopupLayout();
+    testDogScaleButtons();
     testClickRules();
     testAutoStartUi();
     testVolumeSlider();

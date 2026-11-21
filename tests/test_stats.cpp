@@ -155,11 +155,11 @@ static void testFormat()
 
     CHECK(CatStats::formatRate(0, 0) == "-", "0/0");
     CHECK(CatStats::formatRate(5, 0) == "-", "x/0");
-    CHECK(CatStats::formatRate(0, 4) == "0%", "0%");
-    CHECK(CatStats::formatRate(12, 15) == "80%", "80%");
-    CHECK(CatStats::formatRate(1, 3) == "33%", "33%");
-    CHECK(CatStats::formatRate(2, 3) == "67%", "67% rounds");
-    CHECK(CatStats::formatRate(3, 3) == "100%", "100%");
+    CHECK(CatStats::formatRate(0, 4) == "0%", "0%%");
+    CHECK(CatStats::formatRate(12, 15) == "80%", "80%%");
+    CHECK(CatStats::formatRate(1, 3) == "33%", "33%%");
+    CHECK(CatStats::formatRate(2, 3) == "67%", "67%% rounds");
+    CHECK(CatStats::formatRate(3, 3) == "100%", "100%%");
 }
 
 // 누적은 줄지 않는다: 저장값이 더 크면 받아들이고(ahead), 바깥에서 되돌려졌으면 감지해 메모리 값으로 다시 쓴다(behind)

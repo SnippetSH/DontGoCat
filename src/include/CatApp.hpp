@@ -49,8 +49,9 @@ public:
 
     void start();   // 스캔 1회 → 주 모니터 바닥 중앙 위에서 spawn → 오버레이 표시 → 타이머 시작
     void setScale(int scale);
-    // 화면의 동물을 바꾼다 (README: 팝업 얼굴 메뉴). respawn 이면 지금 동물을 없애고 시작 때처럼 새로 등장
-    void setSpecies(CatSpecies species, bool respawn);
+    // 화면의 동물을 바꾼다 (README: 팝업 얼굴 메뉴). respawn 이면 지금 동물을 없애고 시작 때처럼 새로 등장.
+    // 배율은 scale 로 맞춘다 (새 동물의 상한으로 제한). 사용자가 바꿀 때는 CatSprite::convertScale 값을 넘긴다
+    void setSpecies(CatSpecies species, int scale, bool respawn);
     CatSpecies species() const { return CatSprite::species(); }
 
     // 하네스/점검용 접근자
